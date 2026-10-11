@@ -1,0 +1,31 @@
+<!-- visuals: 1.2 libs: three -->
+<hgroup>
+<h1>Failures cluster in the afternoon in every region</h1>
+<p>Failures per hour by region and shift. Drag to orbit, scroll to zoom.</p>
+</hgroup>
+
+<figure>
+<div class="scene" id="scene" role="img" aria-label="3D bar chart of failures by region and shift. Bars are tallest in the Day and Evening shifts. Delhi Day is the highest bar at 26."></div>
+<figcaption>Source: illustrative example data. Axes: region (depth), shift (width), failures per hour (height).</figcaption>
+</figure>
+
+<ul class="legend"><li class="c1">Mumbai</li><li class="c2">Delhi</li><li class="c3">Chennai</li></ul>
+<p>The afternoon (Day) shift has the most failures everywhere. Delhi peaks at 26 per hour.</p>
+
+<script type="application/json" id="data">
+{ "regions": ["Mumbai","Delhi","Chennai"], "shifts": ["Night","Morning","Day","Evening"],
+  "values": [[2,8,19,12],[1,11,26,17],[1,6,13,7]] }
+</script>
+<script>
+const data = JSON.parse(document.getElementById("data").textContent);
+const th = Visuals.three;
+const s = th.create({ container: "#scene", OrbitControls: THREE.OrbitControls, position: [7, 6, 8.5], gridSize: 8, gridDivisions: 8 });
+const max = Math.max(...data.values.flat());
+data.values.forEach((row, r) => row.forEach((v, c) => {
+  const h = (v / max) * 4;
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.8, h, 0.8), th.material(r));
+  bar.position.set((c - 1.5) * 1.5, h / 2, (r - 1) * 1.5);
+  s.scene.add(bar);
+}));
+s.controls.target.set(0, 1.5, 0);
+</script>

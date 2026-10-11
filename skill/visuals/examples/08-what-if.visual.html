@@ -1,0 +1,52 @@
+<!-- visuals: 1.2 libs: chart -->
+<hgroup>
+<h1>Raising the cache hit rate from 40% to 70% cuts average latency by 46%</h1>
+<p>What-if: average query latency against cache hit rate</p>
+</hgroup>
+
+<form class="stack" onsubmit="return false">
+<div><label for="hit">Cache hit rate: <output id="hitOut">40%</output></label><input id="hit" type="range" min="0" max="100" value="40"></div>
+<div><label for="miss">Miss path, ms: <output id="missOut">240</output></label><input id="miss" type="range" min="100" max="500" step="10" value="240"></div>
+</form>
+
+<div class="grid cols-2" style="margin-top: var(--space-4)">
+<div class="card stat"><span class="label">Average latency</span><span class="value" id="avg">0 ms</span></div>
+<div class="card stat"><span class="label">vs 40% hit rate</span><span class="value" id="delta">0%</span></div>
+</div>
+
+<figure>
+<div class="chart"><canvas id="c" role="img" aria-label="Line chart: average latency falls steadily as cache hit rate rises from 0 to 100 percent. The current setting is marked with a point."></canvas></div>
+<figcaption>Model: average = hit rate x 12 ms + (1 - hit rate) x miss path. The 12 ms hit path and 240 ms miss path are illustrative.</figcaption>
+</figure>
+
+<button type="button" id="ask">Ask the agent to explain this</button>
+
+<script type="application/json" id="data">{ "hitMs": 12, "baselineHit": 40 }</script>
+<script>
+const cfg = JSON.parse(document.getElementById("data").textContent);
+const hit = document.getElementById("hit"), miss = document.getElementById("miss");
+const avg = (h, m) => (h / 100) * cfg.hitMs + (1 - h / 100) * m;
+const xs = Array.from({ length: 21 }, (_, i) => i * 5);
+const chart = new Chart(document.getElementById("c"), {
+  type: "line",
+  data: { labels: xs, datasets: [
+    { label: "Average latency", data: [], pointRadius: 0 },
+    { label: "Current setting", data: [], showLine: false, pointRadius: 6 } ] },
+  options: { scales: { x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 6 }, title: { display: true, text: "cache hit rate, %" } }, y: { beginAtZero: true, title: { display: true, text: "ms" } } },
+    plugins: { tooltip: { enabled: false } } }
+});
+function update() {
+  const h = +hit.value, m = +miss.value;
+  document.getElementById("hitOut").textContent = h + "%";
+  document.getElementById("missOut").textContent = m;
+  const now = avg(h, m), base = avg(cfg.baselineHit, m);
+  document.getElementById("avg").textContent = Visuals.fmt.ms(now);
+  document.getElementById("delta").textContent = (now <= base ? "" : "+") + Visuals.fmt.pct((now - base) / base, 0);
+  chart.data.datasets[0].data = xs.map(x => avg(x, m));
+  chart.data.datasets[1].data = xs.map(x => (x === Math.round(h / 5) * 5 ? now : null));
+  chart.update("none");
+}
+hit.addEventListener("input", update); miss.addEventListener("input", update); update();
+if (!Visuals.hasHost) document.getElementById("ask").hidden = true;
+document.getElementById("ask").addEventListener("click", () => Visuals.ask("Explain the cache hit rate model in this visual and what would change if the miss path got faster."));
+</script>

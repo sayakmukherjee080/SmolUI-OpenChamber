@@ -1,0 +1,44 @@
+<!-- visuals: 1.2 libs: chart -->
+<hgroup>
+<h1>Kolkata is the slowest region at both p50 and p95</h1>
+<p>Query latency by region, milliseconds, lower is better</p>
+</hgroup>
+
+<figure>
+<div class="chart tall"><canvas id="c" role="img" aria-label="Horizontal grouped bar chart of p50 and p95 latency for six regions. Kolkata is highest: 171 and 330 milliseconds. Chennai is lowest: 96 and 190."></canvas></div>
+<figcaption>Source: illustrative example data. As of 2026-10-11.</figcaption>
+</figure>
+
+<details>
+<summary>Data table</summary>
+<div class="scroll"><table id="t"><thead><tr><th>Region</th><th class="num">p50</th><th class="num">p95</th></tr></thead><tbody></tbody></table></div>
+</details>
+
+<script type="application/json" id="data">
+{ "regions": ["Kolkata","Delhi","Jaipur","Mumbai","Pune","Chennai"],
+  "p50": [171,142,133,118,104,96],
+  "p95": [330,288,260,240,210,190] }
+</script>
+<script>
+const data = JSON.parse(document.getElementById("data").textContent);
+new Chart(document.getElementById("c"), {
+  type: "bar",
+  data: { labels: data.regions, datasets: [{ label: "p50", data: data.p50 }, { label: "p95", data: data.p95 }] },
+  options: {
+    indexAxis: "y",
+    scales: { x: { beginAtZero: true, title: { display: true, text: "ms" } } },
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ": " + Visuals.fmt.ms(c.parsed.x) } } }
+  }
+});
+const body = document.querySelector("#t tbody");
+data.regions.forEach((r, i) => {
+  const tr = document.createElement("tr");
+  [[r, "th"], [data.p50[i], "td"], [data.p95[i], "td"]].forEach(([v, tag], j) => {
+    const cell = document.createElement(tag);
+    cell.textContent = v;
+    if (j > 0) cell.className = "num";
+    tr.appendChild(cell);
+  });
+  body.appendChild(tr);
+});
+</script>

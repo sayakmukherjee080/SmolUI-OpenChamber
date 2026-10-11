@@ -1,0 +1,23 @@
+<!-- visuals: 1.2 libs: mermaid -->
+<hgroup>
+<h1>A cache hit skips the index and rerank entirely</h1>
+<p>Request path for one search</p>
+</hgroup>
+
+<figure>
+<pre class="mermaid" role="img" aria-label="Flowchart: the client sends a query to the embedder, then a cache check. A hit returns immediately. A miss goes to the index, then rerank, then returns.">
+flowchart TB
+  A[Client] -->|query| B(Embedder)
+  B --> C{Cache hit?}
+  C -->|yes| D[Return result]
+  C -->|no| E[(Index)]
+  E --> F[Rerank]
+  F --> D
+  class B accent
+  class D ok
+  class F warn
+</pre>
+<figcaption>Source: read from src/search/handler.ts. Rerank (orange) is the slow step.</figcaption>
+</figure>
+
+<div class="callout"><strong>Reading the diagram.</strong> The green box is the fast exit. The orange box is the step that exceeds its latency budget.</div>

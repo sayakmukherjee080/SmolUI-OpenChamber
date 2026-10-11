@@ -1,0 +1,27 @@
+<!-- visuals: 1.2 libs: none -->
+<hgroup>
+<h1>Rerank is the only endpoint over budget</h1>
+<p>Median and p95 latency by endpoint, last 7 days</p>
+</hgroup>
+
+<div class="grid cols-2">
+<div class="card stat"><span class="label">Median, all</span><span class="value">131 ms</span><span class="delta up">12 ms faster than last week</span></div>
+<div class="card stat"><span class="label">p95, all</span><span class="value">253 ms</span><span class="delta down">9 ms slower than last week</span></div>
+</div>
+
+<figure>
+<div class="scroll">
+<table>
+<caption>Latency by endpoint, milliseconds</caption>
+<thead><tr><th>Endpoint</th><th class="num">p50</th><th class="num">p95</th><th>State</th></tr></thead>
+<tbody>
+<tr><th scope="row"><code>/search</code></th><td class="num">118</td><td class="num">240</td><td><span class="badge ok">Healthy</span></td></tr>
+<tr><th scope="row"><code>/embed</code></th><td class="num">64</td><td class="num">131</td><td><span class="badge ok">Healthy</span></td></tr>
+<tr><th scope="row"><code>/rerank</code></th><td class="num">212</td><td class="num">388</td><td><span class="badge warn">Over budget</span></td></tr>
+</tbody>
+</table>
+</div>
+<figcaption>Source: illustrative example data. Budget is 300 ms at p95. As of 2026-10-11.</figcaption>
+</figure>
+
+<div class="callout warn"><strong>Rerank p95 is 388 ms.</strong> It is 88 ms over the 300 ms budget, and it runs on every query.</div>

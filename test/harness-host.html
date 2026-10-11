@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>SmolUI harness host</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      #guest {
+        width: 420px;
+        height: 100vh;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe id="guest" sandbox="allow-scripts" src="/panel/index.html"></iframe>
+    <script>
+      // Stub OpenChamber host for the panel harness. Speaks just enough of the
+      // SDK wire protocol for the panel: ready, files, compose, toast,
+      // clipboard, service calls, and the file-open push for the editor surface.
+      (async () => {
+        const CHANNEL = "openchamber.sdk";
+        const V = 1;
+        const params = new URLSearchParams(location.search);
+        const surface = params.get("surface") ?? "panel";
+        const withMessageItem = params.get("item") === "message";
+        const empty = params.get("empty") === "1";
+
+        const frame = document.getElementById("guest");
+        const logs = { compose: [], toasts: [], clipboard: [], serviceRequests: [], readyCount: 0 };
+        const files = new Map();
+        const mtimes = new Map();
+        let mode = "dark";
+
+        const fixtures = [
+          ["kpi", "/v1-reference-kit/skill/visuals/examples/01-kpi-table.visual.html", 3],
+          ["line", "/v1-reference-kit/skill/visuals/examples/02-line-chart.visual.html", 1],
+          ["whatif", "/v1-reference-kit/skill/visuals/examples/08-what-if.visual.html", 2],
+        ];
+        const fixturesReady = Promise.all(
+          fixtures.map(async ([slug, url, order]) => {
+            const text = await (await fetch(url)).text();
+            files.set(`.visuals/${slug}.visual.html`, text);
+            mtimes.set(`.visuals/${slug}.visual.html`, 1_700_000_000_000 + order * 60_000);
+          }),
+        ).then(() => {
+          files.set(".visuals/kpi.html", "<!doctype html><title>standalone</title>");
+          mtimes.set(".visuals/kpi.html", 1_700_000_000_000 + 3 * 60_000);
+        });
+
+        const tokens = (m) => ({
+          background: m === "dark" ? "#101312" : "#ffffff",
+          elevated: m === "dark" ? "#181d1b" : "#f6f7f6",
+          foreground: m === "dark" ? "#e6e9e7" : "#1a1d1b",
+          muted: m === "dark" ? "#9aa39e" : "#5b625e",
+          subtle: m === "dark" ? "#222825" : "#eceeec",
+          border: m === "dark" ? "#2c332f" : "#d9ddd9",
+          hover: m === "dark" ? "#1f2521" : "#eef1ee",
+          selection: m === "dark" ? "#26402f" : "#dcefe2",
+          focus: m === "dark" ? "#4f9d6b" : "#2f6b45",
+          primary: "#3f7d5a",
+          mutedSurface: m === "dark" ? "#161a18" : "#f1f3f1",
+          elevatedForeground: m === "dark" ? "#e6e9e7" : "#1a1d1b",
+          active: m === "dark" ? "#26302a" : "#e2e7e2",
+          selectionForeground: m === "dark" ? "#e6e9e7" : "#1a1d1b",
+          primaryForeground: "#ffffff",
+          primaryText: m === "dark" ? "#8fd0a8" : "#2f6b45",
+          successText: "#3f7d5a",
+          warningText: "#b26a00",
+          errorText: "#b3261e",
+          infoText: "#1565c0",
+          success: "#2e7d32",
+          warning: "#b26a00",
+          error: "#b3261e",
+          info: "#1565c0",
+          font: "system-ui, sans-serif",
+          mono: "ui-monospace, SFMono-Regular, monospace",
+          radius: "9px",
+        });
+
+        const send = (message) => frame.contentWindow.postMessage({ channel: CHANNEL, v: V, ...message }, "*");
+
+        function sendReady() {
+          logs.readyCount += 1;
+          send({
+            type: "ready",
+            payload: {
+              theme: { mode, tokens: tokens(mode) },
+              locale: "en-US",
+              directory: "/tmp/harness-project",
+              session: { id: "ses_harness", title: "Harness session", busy: false },
+              surface,
+              connection: { connected: false, account: "" },
+              settings: {},
+              item: withMessageItem
+                ? {
+                    kind: "message",
+                    action: "open-visual",
+                    sessionId: "ses_harness",
+                    sessionTitle: "Harness session",
+                    directory: "/tmp/harness-project",
+                    messageId: "msg_1",
+                    role: "assistant",
+                    text: "Wrote `.visuals/whatif.visual.html` for you.",
+                  }
+                : null,
+            },
+          });
+        }
+
+        window.__harness = {
+          logs,
+          setTheme(next) {
+            mode = next;
+            sendReady();
+          },
+          pushLifecycle(phase) {
+            send({ type: "session-lifecycle", payload: { sessionId: "ses_harness", phase } });
+          },
+        };
+
+        async function pushFileOpen() {
+          await fixturesReady;
+          send({
+            type: "file-open",
+            payload: {
+              path: "/tmp/harness-project/.visuals/whatif.visual.html",
+              name: "whatif.visual.html",
+              readOnly: false,
+              encoding: "text",
+              content: files.get(".visuals/whatif.visual.html"),
+            },
+          });
+        }
+
+        window.addEventListener("message", async (event) => {
+          if (event.source !== frame.contentWindow) return;
+          const message = event.data;
+          if (!message || message.channel !== CHANNEL || message.v !== V) return;
+          const reply = (payload) => send({ type: "result", id: message.id, ok: true, payload });
+          const fail = (code, error) => send({ type: "result", id: message.id, ok: false, code, error });
+
+          if (message.type === "hello") {
+            sendReady();
+            if (surface === "file") {
+              void pushFileOpen();
+              window.setTimeout(() => void pushFileOpen(), 500);
+            }
+            return;
+          }
+          if (message.type === "toast") {
+            logs.toasts.push(message.payload);
+            reply();
+            return;
+          }
+          if (message.type === "compose") {
+            logs.compose.push(message.payload);
+            reply();
+            return;
+          }
+          if (message.type === "clipboard-write") {
+            logs.clipboard.push(message.payload.text);
+            reply();
+            return;
+          }
+          if (message.type === "service-request") {
+            logs.serviceRequests.push({ method: message.payload.method, path: message.payload.path });
+            if (message.payload.path === "/setup/status") {
+              reply({
+                status: 200,
+                body: JSON.stringify({
+                  installed: true,
+                  installedVersion: "0.1.0",
+                  packageVersion: "0.1.0",
+                  skillDir: "/tmp/skills/visuals",
+                }),
+              });
+            } else {
+              reply({ status: 404, body: "" });
+            }
+            return;
+          }
+          if (message.type === "file-list") {
+            await fixturesReady;
+            if (empty) {
+              reply({ entries: [] });
+              return;
+            }
+            const base = message.payload.path;
+            const entries = [...files.keys()]
+              .filter((p) => p.startsWith(`${base}/`) && !p.slice(base.length + 1).includes("/"))
+              .map((p) => ({ name: p.slice(base.length + 1), kind: "file" }));
+            reply({ entries });
+            return;
+          }
+          if (message.type === "file-read") {
+            await fixturesReady;
+            const content = files.get(message.payload.path);
+            if (content === undefined) fail("NOT_FOUND", "No such file");
+            else reply({ content });
+            return;
+          }
+          if (message.type === "file-stat") {
+            await fixturesReady;
+            const p = message.payload.path;
+            if (files.has(p)) reply({ kind: "file", size: files.get(p).length, mtime: mtimes.get(p) ?? 0 });
+            else if (p === ".visuals") reply({ kind: "directory", size: 0, mtime: 0 });
+            else reply({ kind: "missing", size: 0, mtime: 0 });
+            return;
+          }
+          fail("HOST_REJECTED", `harness does not implement ${message.type}`);
+        });
+      })();
+    </script>
+  </body>
+</html>

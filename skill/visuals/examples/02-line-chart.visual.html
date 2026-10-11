@@ -1,0 +1,31 @@
+<!-- visuals: 1.2 libs: chart -->
+<hgroup>
+<h1>Latency has been flat in all three regions for a week</h1>
+<p>Median query time by day, milliseconds</p>
+</hgroup>
+
+<figure>
+<div class="chart"><canvas id="c" role="img" aria-label="Line chart of median latency by day for Mumbai, Delhi and Chennai. All three stay flat: Mumbai near 118, Delhi near 143, Chennai near 97 milliseconds."></canvas></div>
+<figcaption>Source: illustrative example data (7-day window ending 2026-10-11).</figcaption>
+</figure>
+
+<p>Delhi is consistently the slowest at about 143 ms. No region moved by more than 15 ms from its weekly average.</p>
+
+<script type="application/json" id="data">
+{ "days": ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+  "series": [
+    { "label": "Mumbai",  "values": [120,118,125,110,118,122,116] },
+    { "label": "Delhi",   "values": [140,150,138,145,142,151,139] },
+    { "label": "Chennai", "values": [96,99,92,101,96,94,98] } ] }
+</script>
+<script>
+const data = JSON.parse(document.getElementById("data").textContent);
+new Chart(document.getElementById("c"), {
+  type: "line",
+  data: { labels: data.days, datasets: data.series.map(s => ({ label: s.label, data: s.values })) },
+  options: {
+    scales: { y: { beginAtZero: true, title: { display: true, text: "ms" } } },
+    plugins: { tooltip: { callbacks: { label: c => c.dataset.label + ": " + Visuals.fmt.ms(c.parsed.y) } } }
+  }
+});
+</script>

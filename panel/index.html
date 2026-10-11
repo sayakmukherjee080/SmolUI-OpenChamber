@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SmolUI</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: var(--oc-bg, transparent);
+        color: var(--oc-fg, inherit);
+        font-family: var(--oc-font, system-ui, sans-serif);
+        font-size: 13px;
+      }
+      #root {
+        height: 100%;
+      }
+      .app {
+        height: 100%;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .bar {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--oc-border, rgba(128, 128, 128, 0.25));
+      }
+      .bar-title {
+        font-weight: 600;
+      }
+      .bar-actions {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .slot {
+        display: inline-flex;
+      }
+      .slot[hidden] {
+        display: none;
+      }
+      .notice {
+        flex: none;
+        padding: 8px 10px 0;
+      }
+      .notice:empty {
+        display: none;
+      }
+      .list-host {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 6px;
+      }
+      .list-host[hidden],
+      .view-host[hidden],
+      .meta-host[hidden] {
+        display: none;
+      }
+      .view-host {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 8px;
+      }
+      .visual-frame {
+        display: block;
+        width: 100%;
+        border: 1px solid var(--oc-border, rgba(128, 128, 128, 0.25));
+        border-radius: var(--oc-radius, 9px);
+        background: transparent;
+      }
+      .meta-host {
+        flex: none;
+        display: flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-top: 1px solid var(--oc-border, rgba(128, 128, 128, 0.25));
+        font-size: 12px;
+        color: var(--oc-muted, gray);
+      }
+      .meta-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+      .meta-download {
+        font-family: var(--oc-mono, monospace);
+        overflow-wrap: anywhere;
+      }
+      .standalone-note {
+        padding: 16px;
+        font-family: system-ui, sans-serif;
+        color: #888;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="main.js"></script>
+  </body>
+</html>

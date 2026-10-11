@@ -1,0 +1,46 @@
+<!-- visuals: 1.2 libs: d3 -->
+<hgroup>
+<h1>Errors peak on Thursday afternoons in every region</h1>
+<p>Errors per hour by weekday and shift, last 4 weeks</p>
+</hgroup>
+
+<figure>
+<div id="chart" class="chart"></div>
+<div class="ramp" aria-hidden="true"><i class="seq-1"></i><i class="seq-2"></i><i class="seq-3"></i><i class="seq-4"></i><i class="seq-5"></i></div>
+<p class="muted text-xs">Fewer errors on the left, more on the right.</p>
+<figcaption>Source: illustrative example data. As of 2026-10-11.</figcaption>
+</figure>
+
+<p>Thursday afternoon has 41 errors per hour, almost twice the Monday level.</p>
+
+<script type="application/json" id="data">
+{ "days": ["Mon","Tue","Wed","Thu","Fri"], "shifts": ["Night","Morning","Afternoon","Evening"],
+  "values": [[3,12,22,14],[4,14,26,15],[5,15,30,18],[6,19,41,21],[4,13,28,16]] }
+</script>
+<script>
+const data = JSON.parse(document.getElementById("data").textContent);
+const host = document.getElementById("chart");
+const v = Visuals.d3;
+function draw() {
+  host.textContent = "";
+  const w = host.clientWidth, h = host.clientHeight, m = { top: 24, right: 8, bottom: 8, left: 64 };
+  const svg = d3.select(host).append("svg").attr("viewBox", [0, 0, w, h]).attr("role", "img")
+    .attr("aria-label", "Heatmap of errors per hour by weekday and shift. Thursday afternoon is highest at 41; nights are lowest, 3 to 6.");
+  const x = d3.scaleBand(data.shifts, [m.left, w - m.right]).padding(0.06);
+  const y = d3.scaleBand(data.days, [m.top, h - m.bottom]).padding(0.06);
+  const max = d3.max(data.values.flat());
+  const color = v.sequential(0, max);
+  const tip = v.tooltip(host);
+  data.days.forEach((d, i) => data.shifts.forEach((s, j) => {
+    const val = data.values[i][j], fill = color(val);
+    svg.append("rect").attr("class", "cell").attr("x", x(s)).attr("y", y(d)).attr("width", x.bandwidth()).attr("height", y.bandwidth()).attr("rx", 3).attr("fill", fill)
+      .on("mousemove", e => tip.show(Visuals.esc(d + " " + s) + ": " + Visuals.fmt.num(val), e)).on("mouseleave", () => tip.hide());
+    svg.append("text").attr("class", "chart-value").attr("x", x(s) + x.bandwidth() / 2).attr("y", y(d) + y.bandwidth() / 2).attr("dy", "0.35em").attr("text-anchor", "middle")
+      .style("fill", Visuals.readable(fill)).text(val);
+  }));
+  svg.append("g").attr("transform", `translate(${m.left},0)`).call(d3.axisLeft(y).tickSize(0)).call(v.axis).select(".domain").remove();
+  svg.append("g").attr("transform", `translate(0,${m.top})`).call(d3.axisTop(x).tickSize(0)).call(v.axis).select(".domain").remove();
+}
+draw(); new ResizeObserver(draw).observe(host);
+Visuals.onTheme(draw);
+</script>

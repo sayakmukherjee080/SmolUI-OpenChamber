@@ -1,0 +1,29 @@
+<!-- visuals: 1.2 libs: chart -->
+<hgroup>
+<h1>Mobile is 58% of traffic, and the rest is split almost evenly</h1>
+<p>Share of sessions by device, last 30 days</p>
+</hgroup>
+<div role="tablist"><button role="tab" aria-selected="true" aria-controls="p1" id="t1">Chart</button><button role="tab" aria-selected="false" aria-controls="p2" id="t2">Table</button></div>
+<div role="tabpanel" id="p1" aria-labelledby="t1">
+<figure>
+<div class="chart square"><canvas id="c" role="img" aria-label="Doughnut chart of session share: mobile 58 percent, desktop 24 percent, tablet 18 percent."></canvas></div>
+<figcaption>Source: illustrative example data. As of 2026-10-11.</figcaption>
+</figure>
+</div>
+<div role="tabpanel" id="p2" aria-labelledby="t2" hidden>
+<table><caption>Sessions by device</caption><thead><tr><th>Device</th><th class="num">Share</th></tr></thead><tbody id="rows"></tbody></table>
+</div>
+<p>Mobile outweighs desktop and tablet combined.</p>
+<script type="application/json" id="data">{ "labels": ["Mobile","Desktop","Tablet"], "values": [58,24,18] }</script>
+<script>
+const data = JSON.parse(document.getElementById("data").textContent);
+const chart = new Chart(document.getElementById("c"), { type: "doughnut", data: { labels: data.labels, datasets: [{ data: data.values }] },
+  options: { plugins: { tooltip: { callbacks: { label: c => c.label + ": " + Visuals.fmt.pct(c.parsed / 100) } } } } });
+const rows = document.getElementById("rows");
+data.labels.forEach((l, i) => { const tr = document.createElement("tr"); const th = document.createElement("th"); th.scope = "row"; th.textContent = l;
+  const td = document.createElement("td"); td.className = "num"; td.textContent = Visuals.fmt.pct(data.values[i] / 100); tr.append(th, td); rows.appendChild(tr); });
+document.querySelectorAll('[role="tab"]').forEach(tab => tab.addEventListener("click", () => {
+  document.querySelectorAll('[role="tab"]').forEach(t => { const on = t === tab; t.setAttribute("aria-selected", on); document.getElementById(t.getAttribute("aria-controls")).hidden = !on; });
+  chart.resize();
+}));
+</script>

@@ -1,0 +1,38 @@
+<!-- visuals: 1.2 libs: mermaid -->
+<hgroup>
+<h1>Every request passes through the gateway before it reaches a model</h1>
+<p>Serving architecture, three layers</p>
+</hgroup>
+
+<figure>
+<pre class="mermaid" role="img" aria-label="Layered architecture: clients call an API gateway, which routes to the embedding service, the rerank service and the language model service. These read from the vector index and the cache.">
+flowchart TB
+  subgraph Clients
+    W[Web app]
+    M[Mobile app]
+  end
+  subgraph Services
+    G[API gateway]
+    E[Embedding]
+    R[Rerank]
+    L[LLM]
+  end
+  subgraph Data
+    V[(Vector index)]
+    C[(Cache)]
+  end
+  W --> G
+  M --> G
+  G --> E
+  G --> R
+  G --> L
+  E --> V
+  R --> V
+  G --> C
+  class G accent
+  class V,C muted
+</pre>
+<figcaption>Source: read from deploy/compose.yml and src/gateway/routes.ts, 2026-10-11.</figcaption>
+</figure>
+
+<p>The gateway is the single entry point and the only component that talks to the cache.</p>

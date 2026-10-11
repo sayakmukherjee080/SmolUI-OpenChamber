@@ -1,0 +1,23 @@
+<!-- visuals: 1.2 libs: katex -->
+<hgroup>
+<h1>The 95th percentile is the value that 19 of 20 requests beat</h1>
+<p>Definition, formula and a worked example</p>
+</hgroup>
+
+<h2>Definition</h2>
+<p>For <span data-math>n</span> sorted latencies <span data-math>x_1 \le x_2 \le \dots \le x_n</span>, the percentile <span data-math>p</span> is read at rank</p>
+<div data-math="display">\accent{r} = \left\lceil \frac{p}{100}\, n \right\rceil, \qquad \text{p95} = x_{\accent{r}}</div>
+
+<h2>Worked example</h2>
+<p>With <span data-math>n = 200</span> requests and <span data-math>p = 95</span>:</p>
+<div data-math="display">r = \left\lceil \tfrac{95}{100} \cdot 200 \right\rceil = 190</div>
+<p>So p95 is the 190th smallest latency. The slowest 10 requests are above it.</p>
+
+<h2>Symbols</h2>
+<dl>
+<dt><span data-math>n</span></dt><dd>number of requests in the window</dd>
+<dt><span data-math>p</span></dt><dd>percentile, from 0 to 100</dd>
+<dt><span data-math>r</span></dt><dd>rank of the value to read (1 is the smallest)</dd>
+</dl>
+
+<figure><figcaption>Source: nearest-rank method. Example values are illustrative.</figcaption></figure>
