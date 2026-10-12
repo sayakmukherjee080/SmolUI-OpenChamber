@@ -47,7 +47,7 @@ The marker takes the series colour; the text stays neutral.
 The label column is narrow (about 72 px) and the value column about 40 px: keep both short, put units in the subtitle. Set the length with `--v` (a percentage you computed); the colour comes from the `c1`..`c6` class on `.bar`. Good for 3 to 8 items; use Chart.js beyond that.
 
 ## Sequence and progress
-- `.stepper`: `<ol class="stepper"><li class="done">..</li><li class="current">..</li><li>..</li></ol>`
+- `.stepper`: `<ol class="stepper"><li class="done">..</li><li class="current">..</li><li>..</li></ol>` (for a guided tour with Back / Next, see `references/motion.md`)
 - `.timeline`: `<ol class="timeline"><li><time>2026-10-01</time> Event text</li></ol>`
 - `.breadcrumb`, `.pagination` for navigation-like content.
 

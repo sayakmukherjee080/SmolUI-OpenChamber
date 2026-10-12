@@ -31,10 +31,13 @@
         const empty = params.get("empty") === "1";
 
         const frame = document.getElementById("guest");
-        const logs = { compose: [], toasts: [], clipboard: [], serviceRequests: [], readyCount: 0 };
+        const logs = { compose: [], toasts: [], clipboard: [], serviceRequests: [], readyCount: 0, storage: [], surfaces: [], prompts: [] };
+        const store = new Map();
         const files = new Map();
         const mtimes = new Map();
         let mode = "dark";
+        const seededRequest = params.get("request");
+        if (seededRequest) store.set("open-request", { name: `${seededRequest}.visual.html`, at: Date.now() });
 
         const fixtures = [
           ["kpi", "/v1-reference-kit/skill/visuals/examples/01-kpi-table.visual.html", 3],
@@ -121,6 +124,15 @@
           pushLifecycle(phase) {
             send({ type: "session-lifecycle", payload: { sessionId: "ses_harness", phase } });
           },
+          pushSession(busy) {
+            send({ type: "session", payload: { session: { id: "ses_harness", title: "Harness session", busy } } });
+          },
+          addVisual(source, slug) {
+            const content = files.get(`.visuals/${source}.visual.html`);
+            if (!content) return;
+            files.set(`.visuals/${slug}.visual.html`, content);
+            mtimes.set(`.visuals/${slug}.visual.html`, Date.now());
+          },
         };
 
         async function pushFileOpen() {
@@ -162,14 +174,46 @@
             reply();
             return;
           }
+          if (message.type === "prompt") {
+            logs.prompts.push(message.payload);
+            reply({ sent: "sent" });
+            return;
+          }
           if (message.type === "clipboard-write") {
             logs.clipboard.push(message.payload.text);
             reply();
             return;
           }
+          if (message.type === "storage") {
+            const { op, key, value } = message.payload;
+            logs.storage.push({ op, key });
+            if (op === "set") {
+              store.set(key, value);
+              reply({ storage: true, op });
+              return;
+            }
+            if (op === "delete") {
+              store.delete(key);
+              reply({ storage: true, op });
+              return;
+            }
+            if (op === "keys") {
+              reply({ storage: true, op, keys: [...store.keys()] });
+              return;
+            }
+            const found = store.has(key);
+            reply(found ? { storage: true, op: "get", found: true, value: store.get(key) } : { storage: true, op: "get", found: false });
+            return;
+          }
+          if (message.type === "open-surface") {
+            logs.surfaces.push(message.payload.surfaceId);
+            reply();
+            return;
+          }
           if (message.type === "service-request") {
-            logs.serviceRequests.push({ method: message.payload.method, path: message.payload.path });
-            if (message.payload.path === "/setup/status") {
+            const request = message.payload;
+            logs.serviceRequests.push({ method: request.method, path: request.path });
+            if (request.path === "/setup/status") {
               reply({
                 status: 200,
                 body: JSON.stringify({
@@ -179,9 +223,15 @@
                   skillDir: "/tmp/skills/visuals",
                 }),
               });
-            } else {
-              reply({ status: 404, body: "" });
+              return;
             }
+            if (request.path === "/assets" && request.query) {
+              const assetUrl = `/__asset?path=${encodeURIComponent(request.query.path)}&offset=${encodeURIComponent(request.query.offset)}&length=${encodeURIComponent(request.query.length)}`;
+              const assetResponse = await fetch(assetUrl);
+              reply({ status: assetResponse.status, body: await assetResponse.text() });
+              return;
+            }
+            reply({ status: 404, body: "" });
             return;
           }
           if (message.type === "file-list") {

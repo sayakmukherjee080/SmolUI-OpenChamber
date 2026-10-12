@@ -28,12 +28,56 @@ const TYPES = {
   ".svg": "image/svg+xml",
 };
 
+/** Test control: when true, the panel's own asset fetches are refused. */
+let denyAssets = false;
+/** While set, console noise from the deliberately refused fetches is expected. */
+let allowNetworkNoise = false;
+
 const server = createServer((request, response) => {
   try {
     const url = new URL(request.url, "http://localhost");
     if (url.pathname === "/favicon.ico") {
       response.writeHead(204);
       response.end();
+      return;
+    }
+    // Test controls: make the panel's own asset fetches fail, the way an
+    // expired URL token does on a password-protected instance.
+    if (url.pathname === "/__deny-assets") {
+      denyAssets = true;
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    if (url.pathname === "/__allow-assets") {
+      denyAssets = false;
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+    // The stub service reads package assets through this path.
+    if (url.pathname === "/__asset") {
+      const relative = url.searchParams.get("path") ?? "";
+      const filePath = path.join(ROOT, relative);
+      if (!filePath.startsWith(ROOT) || !statSync(filePath).isFile()) {
+        response.writeHead(404);
+        response.end();
+        return;
+      }
+      const buffer = readFileSync(filePath);
+      const offset = Math.max(0, Math.min(Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0, buffer.length));
+      const requested = Number.parseInt(url.searchParams.get("length") ?? "", 10) || 150_000;
+      const length = Math.max(0, Math.min(requested, buffer.length - offset));
+      response.setHeader("content-type", "application/json");
+      response.end(
+        JSON.stringify({ data: buffer.subarray(offset, offset + length).toString("base64"), offset, length, total: buffer.length }),
+      );
+      return;
+    }
+    if (denyAssets && url.pathname.startsWith("/skill/")) {
+      response.setHeader("access-control-allow-origin", "null");
+      response.writeHead(401, { "content-type": "application/json" });
+      response.end('{"error":"UI authentication required","locked":true}');
       return;
     }
     const filePath = path.join(ROOT, decodeURIComponent(url.pathname));
@@ -61,7 +105,7 @@ let checks = 0;
 async function newHarnessPage(query) {
   const page = await browser.newPage();
   page.on("console", (message) => {
-    if (message.type() === "error") problems.push(`[${query || "panel"}] console: ${message.text()}`);
+    if (message.type() === "error" && !allowNetworkNoise) problems.push(`[${query || "panel"}] console: ${message.text()}`);
   });
   page.on("pageerror", (error) => problems.push(`[${query || "panel"}] pageerror: ${error.message}`));
   await page.goto(`${base}/test/harness-host.html${query}`);
@@ -77,6 +121,21 @@ try {
   await rows.first().waitFor({ timeout: 15000 });
   const titles = await guest.locator('[role="option"] .oc-sdk-row-title').allTextContents();
   assert.deepEqual(titles, ["kpi", "whatif", "line"], "list is newest first and hides the standalone .html");
+  checks += 1;
+
+  // prompt box sends the typed text into the session
+  await guest.locator(".prompt-input").fill("Chart the deploy frequency");
+  await guest.locator(".prompt-row button", { hasText: "Send" }).click();
+  await page.waitForFunction(() => window.__harness.logs.prompts.length > 0, null, { timeout: 5000 });
+  const prompts = await page.evaluate(() => window.__harness.logs.prompts);
+  assert.equal(prompts[0].text, "Chart the deploy frequency", "prompt box sends the typed text");
+  assert.equal(prompts[0].send, true, "prompt box sends immediately");
+  assert.equal(await guest.locator(".prompt-input").inputValue(), "", "prompt box clears after sending");
+  checks += 1;
+
+  // the busy indicator follows the session
+  await page.evaluate(() => window.__harness.pushSession(true));
+  await guest.locator(".prompt-status", { hasText: "The agent is writing" }).waitFor({ timeout: 5000 });
   checks += 1;
 
   await guest.locator('[role="option"]', { hasText: "kpi" }).click();
@@ -119,6 +178,14 @@ try {
   assert.ok(copied.includes(".visuals/whatif.html"), "copy path writes the download path");
   checks += 1;
 
+  // with a visual open, the prompt carries its path
+  await guest.locator(".prompt-input").fill("Move the sunset stop earlier");
+  await guest.locator(".prompt-row button", { hasText: "Send" }).click();
+  await page.waitForFunction(() => window.__harness.logs.prompts.length > 1, null, { timeout: 5000 });
+  const contextPrompt = await page.evaluate(() => window.__harness.logs.prompts[1].text);
+  assert.ok(contextPrompt.startsWith("Regarding `.visuals/whatif.visual.html`:"), "prompt carries the open visual path");
+  checks += 1;
+
   // --- message action: ready carries a message item naming a visual ---
   const itemPage = await newHarnessPage("?item=message");
   const itemGuest = itemPage.frameLocator("#guest");
@@ -137,17 +204,73 @@ try {
   assert.ok((await fileGuest.locator(".meta-line").innerText()).includes("chart"), "file surface shows size and libs");
   checks += 1;
 
+  await fileGuest.locator("button", { hasText: "Open in panel" }).click();
+  await filePage.waitForFunction(() => window.__harness.logs.surfaces.length > 0, null, { timeout: 5000 });
+  assert.deepEqual(await filePage.evaluate(() => window.__harness.logs.surfaces), ["plugin:smolui"], "Open in panel asks for the plugin surface");
+  const stored = await filePage.evaluate(() => window.__harness.logs.storage);
+  assert.ok(
+    stored.some((entry) => entry.op === "set" && entry.key === "open-request"),
+    "Open in panel leaves the open-request",
+  );
+  checks += 1;
+
+  // --- a pending open-request opens that visual on mount ---
+  const requestPage = await newHarnessPage("?request=whatif");
+  const requestGuest = requestPage.frameLocator("#guest");
+  const requestVisual = requestGuest.frameLocator("iframe.visual-frame");
+  await requestVisual.locator("#ask").waitFor({ timeout: 15000 });
+  assert.ok(await requestGuest.locator(".list-host").isHidden(), "open-request opens the visual without a click");
+  checks += 1;
+
   // --- full-screen page surface: same panel, page context ---
   const pageSurface = await newHarnessPage("?surface=page");
   const pageGuest = pageSurface.frameLocator("#guest");
   await pageGuest.locator('[role="option"]').first().waitFor({ timeout: 15000 });
   checks += 1;
 
-  // --- empty project: the "no visuals yet" state ---
+  // --- empty project: the "no visuals yet" state and its chips ---
   const emptyPage = await newHarnessPage("?empty=1");
   const emptyGuest = emptyPage.frameLocator("#guest");
   await emptyGuest.locator(".oc-sdk-empty-title").waitFor({ timeout: 15000 });
   assert.equal(await emptyGuest.locator(".oc-sdk-empty-title").innerText(), "No visuals yet");
+  checks += 1;
+  assert.deepEqual(
+    await emptyGuest.locator(".chip-row button").allTextContents(),
+    ["Chart this week's numbers", "Map this route", "Explain this with a diagram", "Compare the options"],
+    "suggestions show on an empty project",
+  );
+  await emptyGuest.locator(".prompt-input").fill("Map the museum route");
+  await emptyGuest.locator(".prompt-row button", { hasText: "Send" }).click();
+  await emptyPage.waitForFunction(() => window.__harness.logs.prompts.length > 0, null, { timeout: 5000 });
+  await emptyGuest.locator(".chip-row", { hasText: "Map the museum route" }).waitFor({ timeout: 5000 });
+  checks += 1;
+
+  // --- a visual written while the panel is open opens by itself ---
+  const autoPage = await newHarnessPage("");
+  const autoGuest = autoPage.frameLocator("#guest");
+  await autoGuest.locator('[role="option"]').first().waitFor({ timeout: 15000 });
+  await autoPage.evaluate(() => window.__harness.pushSession(true));
+  await autoPage.evaluate(() => window.__harness.addVisual("kpi", "tornado"));
+  const autoVisual = autoGuest.frameLocator("iframe.visual-frame");
+  await autoVisual.locator("h1").waitFor({ timeout: 15000 });
+  assert.ok(/Rerank/.test(await autoVisual.locator("h1").innerText()), "a visual written while the panel is open opens by itself");
+  checks += 1;
+
+  // --- refused asset fetches (an expired token) fall back to the service ---
+  const fallbackPage = await newHarnessPage("");
+  allowNetworkNoise = true;
+  await fetch(`${base}/__deny-assets`);
+  const fallbackGuest = fallbackPage.frameLocator("#guest");
+  await fallbackGuest.locator('[role="option"]').first().waitFor({ timeout: 15000 });
+  await fallbackGuest.locator('[role="option"]', { hasText: "line" }).click();
+  const fallbackVisual = fallbackGuest.frameLocator("iframe.visual-frame");
+  await fallbackVisual.locator("canvas").waitFor({ timeout: 30000 });
+  const assetRequests = await fallbackPage.evaluate(
+    () => window.__harness.logs.serviceRequests.filter((entry) => entry.path === "/assets").length,
+  );
+  assert.ok(assetRequests > 0, "assets fall back to the service when the fetch is refused");
+  await fetch(`${base}/__allow-assets`);
+  allowNetworkNoise = false;
   checks += 1;
 } finally {
   await browser.close();

@@ -211,6 +211,18 @@ function lint(path) {
     for (const v of c.body.matchAll(/var\(\s*--([\w-]+)/g)) unknownToken(v[1], at(v.index));
   }
 
+  // ---- motion discipline
+  if (
+    /\brequestAnimationFrame\s*\(|\bsetInterval\s*\(/.test(allCode) &&
+    !/prefers-reduced-motion|reduceMotion/.test(raw)
+  ) {
+    warn(
+      "W22",
+      0,
+      "animation loop without a reduced-motion guard. Read Visuals.tokens().reduceMotion (or matchMedia('(prefers-reduced-motion: reduce)')) and skip the animation when it is set.",
+    );
+  }
+
   // ---- libraries declared vs used
   const hay = allCode + "\n" + markup;
   const used = {

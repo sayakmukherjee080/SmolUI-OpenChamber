@@ -1,0 +1,78 @@
+<!-- visuals: 1.2 libs: none -->
+<hgroup>
+<h1>Five stops fit one day, from the waterfront to the sunset ridge</h1>
+<p>Illustrative route with times; filter by morning or afternoon</p>
+</hgroup>
+
+<div class="toolbar" role="group" aria-label="Filter the stops" style="justify-content:flex-start">
+  <button id="all" class="sm" aria-pressed="true">All stops</button>
+  <button id="morning" class="sm" aria-pressed="false">Morning</button>
+  <button id="afternoon" class="sm" aria-pressed="false">Afternoon</button>
+</div>
+
+<figure>
+<svg viewBox="0 0 360 250" role="img" aria-label="Schematic route map: five numbered stops from the waterfront, 1 Ferry Building, up through 2 cable car, 3 Painted Ladies and 4 Lombard Street, to 5 the sunset ridge, joined by one walking route line.">
+  <path class="svg-line" d="M40 200 C 66 178, 94 164, 120 150 C 156 131, 186 114, 220 100 C 240 92, 262 86, 280 80 C 296 75, 310 60, 320 46" fill="none"/>
+  <g class="stop" data-part="morning">
+    <circle class="svg-dot" cx="40" cy="200" r="7"/>
+    <text class="svg-text" x="54" y="205">1 · Ferry Building</text>
+  </g>
+  <g class="stop" data-part="morning">
+    <circle class="svg-dot" cx="120" cy="150" r="7"/>
+    <text class="svg-text" x="134" y="155">2 · Cable car</text>
+  </g>
+  <g class="stop" data-part="afternoon">
+    <circle class="svg-dot" cx="220" cy="100" r="7"/>
+    <text class="svg-text" x="234" y="105">3 · Painted Ladies</text>
+  </g>
+  <g class="stop" data-part="afternoon">
+    <circle class="svg-dot" cx="280" cy="80" r="7"/>
+    <text class="svg-text" x="294" y="85">4 · Lombard Street</text>
+  </g>
+  <g class="stop" data-part="afternoon">
+    <circle class="svg-dot" cx="320" cy="46" r="9"/>
+    <text class="svg-text" x="208" y="40">5 · Sunset ridge</text>
+  </g>
+  <text class="svg-muted" x="14" y="236">Illustrative geometry · walking pace 4.5 km/h</text>
+</svg>
+<figcaption>Source: illustrative example route; times assume a 4.5 km/h walking pace. As of 2026-10-12.</figcaption>
+</figure>
+
+<div class="card"><code>9:00-9:45</code> <strong>Ferry Building</strong><p>Coffee and a waterfront walk to start the day.</p></div>
+<div class="card"><code>10:00-11:00</code> <strong>Cable car to the top of the hill</strong><p>Ride up, walk the last two blocks.</p></div>
+<div class="card"><code>13:00-14:00</code> <strong>Painted Ladies</strong><p>The postcard row; the park opposite is the view.</p></div>
+<div class="card"><code>14:15-15:00</code> <strong>Lombard Street</strong><p>The crooked block; walk down, not up.</p></div>
+<div class="card"><code>16:30-18:00</code> <strong>Sunset ridge</strong><p>Finish at the panoramic viewpoint, roughly 6:41 PM today.</p></div>
+
+<div class="toolbar" role="group" aria-label="Related queries" style="justify-content:flex-start">
+  <button id="q1" class="sm">Move the sunset stop earlier</button>
+  <button id="q2" class="sm">Add a lunch stop</button>
+  <button id="q3" class="sm">Avoid steep walks</button>
+</div>
+
+<script>
+const stops = [...document.querySelectorAll(".stop")];
+const filterButtons = {
+  all: document.getElementById("all"),
+  morning: document.getElementById("morning"),
+  afternoon: document.getElementById("afternoon"),
+};
+function setFilter(part) {
+  stops.forEach((stop) => {
+    stop.style.opacity = part === "all" || stop.dataset.part === part ? "1" : "0.2";
+  });
+  for (const [name, button] of Object.entries(filterButtons)) button.setAttribute("aria-pressed", String(name === part));
+}
+for (const [name, button] of Object.entries(filterButtons)) button.addEventListener("click", () => setFilter(name));
+
+const asks = {
+  q1: "Move the sunset stop earlier in .visuals/route-map.visual.html and rebuild the times",
+  q2: "Add a lunch stop to .visuals/route-map.visual.html",
+  q3: "Avoid steep walks in .visuals/route-map.visual.html",
+};
+for (const [id, text] of Object.entries(asks)) {
+  const button = document.getElementById(id);
+  button.addEventListener("click", () => Visuals.ask(text));
+  if (!Visuals.hasHost) button.hidden = true;
+}
+</script>

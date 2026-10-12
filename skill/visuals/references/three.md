@@ -37,5 +37,22 @@ const s = th.create({ container: "#scene", OrbitControls: THREE.OrbitControls, p
 - WebGL may be missing in some hosts. The 2D alternative is a `<details>` data table beneath; include it.
 - Do not add listeners on `window`; `create` already resizes with its container.
 
+## Motion and exploded views
+- `s.start()` runs the render loop; `s.stop()` pauses it. Start only when something moves; when `Visuals.tokens().reduceMotion` is true, render one frame and keep the still scene interactive.
+- Exploded view (a mechanism, an assembly, layers): one slider separates the parts; move each mesh on `input` and call `s.render()` — no loop needed.
+  ```html
+  <div class="toolbar"><label for="split">Explode <output id="splitOut">0%</output></label><input id="split" type="range" min="0" max="100" value="0"></div>
+  <script>
+  const parts = []; // { mesh, base: Vector3, dir: Vector3 }
+  document.getElementById("split").addEventListener("input", (e) => {
+    const k = e.target.value / 100;
+    document.getElementById("splitOut").textContent = e.target.value + "%";
+    parts.forEach((p) => p.mesh.position.copy(p.base).addScaledVector(p.dir, k * 2.4));
+    s.render();
+  });
+  </script>
+  ```
+- Guided tours: a step change moves `s.camera` (or `s.controls.target`) and calls `s.render()`; see `references/motion.md`.
+
 ## Example
 `examples/06-scene-3d.visual.html`

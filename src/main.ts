@@ -15,17 +15,25 @@ if (window.parent === window) {
   root.textContent = "SmolUI runs inside OpenChamber. Open it from the rail or the Extensions menu.";
 } else {
   const host = connectHost();
-  const assets = createAssets();
+  const assets = createAssets(host);
   let surface: Surface | null = null;
 
   host.onReady((ctx) => {
-    applyHostReady(ctx, document.documentElement);
+    try {
+      applyHostReady(ctx, document.documentElement);
+    } catch {
+      // The panel still mounts; the kit styles may not apply.
+    }
     document.body.dataset.surface = ctx.surface;
     if (surface) {
       surface.setTheme(ctx.theme.mode);
       return;
     }
-    surface = ctx.surface === "file" ? mountFileSurface({ host, assets, root }) : mountPanelSurface({ host, assets, root });
-    surface.setTheme(ctx.theme.mode);
+    try {
+      surface = ctx.surface === "file" ? mountFileSurface({ host, assets, root }) : mountPanelSurface({ host, assets, root });
+      surface.setTheme(ctx.theme.mode);
+    } catch (error) {
+      root.textContent = `SmolUI failed to start: ${error instanceof Error ? error.message : String(error)}`;
+    }
   });
 }

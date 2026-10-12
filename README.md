@@ -6,6 +6,7 @@ and the same file downloads as one standalone page that works offline.
 
 ## What you get
 
+- **Prompt box** — ask from the panel itself ("Ask for a chart, a map, a plan…"); the answer streams back as the agent writes it, with a "writing…" state and faster refresh while it works.
 - **Rail panel** — every `.visuals/*.visual.html` in the project, newest
   first. Click one to render it in the panel.
 - **Message action** — "Open as visualization" on assistant messages that
@@ -48,10 +49,17 @@ the skill once the service ran.
 | Asked for | Used for |
 | --- | --- |
 | `files` | reading the project's `.visuals` folder; stat of the download |
+| `prompt` | sending what you type in the panel's prompt box into the open session |
 | local service | copying the skill into `~/.config/opencode/skills/visuals/`; runs with your access, talks to nothing |
 
 No network, no `origins`, no integrations. The panel fetches its own package
 assets (libraries, fonts payload) from the server that served it.
+
+## If something fails
+
+- A failed render shows a banner with **Retry** — nothing fails silently.
+- Assets load over two transports: the package fetch (fast) and, if that is refused, the extension's **local service** reading the package in chunks. The panel's frame token lives about a minute, so this is what keeps a long-open panel rendering new libraries after the token expires.
+- The skill-install notice is shown at most once a day, so an unapproved service never nags on every open.
 
 ## Develop
 

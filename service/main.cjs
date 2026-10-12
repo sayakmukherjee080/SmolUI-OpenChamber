@@ -16,6 +16,9 @@ const PACKAGE_ROOT = path.resolve(__dirname, "..");
 const SKILL_SOURCE = path.join(PACKAGE_ROOT, "skill", "visuals");
 const SKILL_DESTINATION = path.join(os.homedir(), ".config", "opencode", "skills", "visuals");
 const VERSION_MARKER = ".smolui-version";
+/** Package-relative paths the panel may read through this service. */
+const ASSET_PATH = /^skill\/visuals\/assets\/[A-Za-z0-9._/-]+$/;
+const ASSET_CHUNK_MAX = 200_000;
 
 if (!Number.isInteger(PORT) || PORT <= 0 || !TOKEN) {
   process.stderr.write("smolui service: OPENCHAMBER_SERVICE_PORT and OPENCHAMBER_SERVICE_TOKEN are required\n");
@@ -40,6 +43,26 @@ async function installedVersion() {
   } catch {
     return null;
   }
+}
+
+/**
+ * One chunk of a package asset, as base64 bytes. The panel reads its own
+ * assets this way when the frame's URL token has expired.
+ */
+async function readAssetChunk(relative, offset, length) {
+  if (!ASSET_PATH.test(relative) || relative.includes("..")) throw new Error("bad asset path");
+  const root = path.resolve(PACKAGE_ROOT);
+  const absolute = path.resolve(root, relative);
+  if (!absolute.startsWith(root + path.sep)) throw new Error("bad asset path");
+  const buffer = await fs.readFile(absolute);
+  const start = Math.max(0, Math.min(offset, buffer.length));
+  const size = Math.max(0, Math.min(length, buffer.length - start));
+  return {
+    data: buffer.subarray(start, start + size).toString("base64"),
+    offset: start,
+    length: size,
+    total: buffer.length,
+  };
 }
 
 /**
@@ -101,6 +124,18 @@ const server = http.createServer(async (request, response) => {
       return send(200, { ok: true, ...result, skillDir: SKILL_DESTINATION });
     } catch (error) {
       return send(500, { error: describe(error) });
+    }
+  }
+
+  if (request.method === "GET" && url.pathname === "/assets") {
+    try {
+      const relative = url.searchParams.get("path") ?? "";
+      const offset = Number.parseInt(url.searchParams.get("offset") ?? "0", 10) || 0;
+      const requested = Number.parseInt(url.searchParams.get("length") ?? "", 10) || ASSET_CHUNK_MAX;
+      const length = Math.max(1, Math.min(requested, ASSET_CHUNK_MAX));
+      return send(200, await readAssetChunk(relative, offset, length));
+    } catch (error) {
+      return send(400, { error: describe(error) });
     }
   }
 

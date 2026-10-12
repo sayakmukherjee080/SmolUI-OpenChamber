@@ -1,6 +1,6 @@
 {
   "name": "smolui-openchamber",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "private": true,
   "description": "SmolUI: renders agent-written .visual.html fragments inside OpenChamber and installs the visuals skill for OpenCode.",
   "license": "MIT",
@@ -14,11 +14,12 @@
       "panel": {
         "id": "smolui",
         "name": "SmolUI",
-        "icon": "bar-chart-box",
+        "icon": "icon.svg",
         "entry": "panel/index.html"
       },
       "capabilities": [
-        "files"
+        "files",
+        "prompt"
       ],
       "actions": [
         {
@@ -49,6 +50,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "package": "node scripts/build.mjs && node scripts/package.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node test/parser.test.mjs && node test/parity.mjs && node test/service.test.mjs",
     "test:browser": "node scripts/build.mjs && node test/harness.mjs"

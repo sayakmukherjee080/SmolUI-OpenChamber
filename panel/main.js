@@ -1898,6 +1898,35 @@ textarea.oc-sdk-input { height: auto; padding: 8px 12px; resize: vertical; }
     };
   };
 
+  // node_modules/@openchamber/sdk/dist/ui/spinner.js
+  var mountSpinner = (root2, initial = {}) => {
+    ensureStyle(UI_CSS);
+    let props = initial;
+    const node = el("span", "oc-sdk oc-sdk-spinner");
+    node.setAttribute("role", "status");
+    const ring2 = el("span", "oc-sdk-spinner-ring");
+    ring2.setAttribute("aria-hidden", "true");
+    const label = el("span");
+    node.append(ring2, label);
+    root2.append(node);
+    const paint = () => {
+      node.dataset.size = props.size ?? "default";
+      setText(label, props.label);
+      label.hidden = !props.label;
+      node.setAttribute("aria-label", props.label ?? "Loading");
+    };
+    paint();
+    return {
+      update: (next) => {
+        props = { ...props, ...next };
+        paint();
+      },
+      dispose: () => {
+        node.remove();
+      }
+    };
+  };
+
   // node_modules/@openchamber/sdk/dist/ui/banner.js
   var mountBanner = (root2, initial) => {
     ensureStyle(UI_CSS);
@@ -2056,6 +2085,9 @@ ${frag}
   // src/assets.ts
   var ASSET_ROOT = "skill/visuals/assets/";
   var FONTS_PAYLOAD = "fonts.gen.json";
+  var SERVICE_PATH = "/assets";
+  var SERVICE_CHUNK = 15e4;
+  var FETCH_ATTEMPTS = 2;
   function urlToken() {
     try {
       return new URL(window.location.href).searchParams.get("oc_url_token");
@@ -2075,24 +2107,80 @@ ${frag}
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     return bytes;
   }
-  async function fetchText(path) {
-    const response = await fetch(assetUrl(path));
-    if (!response.ok) throw new Error(`${path} answered ${response.status}`);
+  function decodeChunks(chunks) {
+    let size = 0;
+    for (const chunk of chunks) size += chunk.length;
+    const joined = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      joined.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return new TextDecoder().decode(joined);
+  }
+  async function fetchText(relative) {
+    const response = await fetch(assetUrl(relative));
+    if (!response.ok) throw new Error(`${relative} answered ${response.status}`);
     return response.text();
   }
-  function createAssets() {
+  function createAssets(host) {
     const textCache = /* @__PURE__ */ new Map();
     let fonts = null;
+    let serviceUsable = true;
+    async function readViaService(relative) {
+      const chunks = [];
+      let offset = 0;
+      let total = Number.POSITIVE_INFINITY;
+      while (offset < total) {
+        const response = await host.serviceRequest({
+          method: "GET",
+          path: SERVICE_PATH,
+          query: { path: `${ASSET_ROOT}${relative}`, offset: String(offset), length: String(SERVICE_CHUNK) }
+        });
+        if (response.status !== 200) throw new Error(`${relative}: service answered ${response.status}`);
+        const payload = JSON.parse(response.body);
+        if (typeof payload.data !== "string" || typeof payload.length !== "number" || typeof payload.total !== "number") {
+          throw new Error(`${relative}: service answered an unexpected shape`);
+        }
+        chunks.push(decodeBase64(payload.data));
+        total = payload.total;
+        if (payload.length <= 0) break;
+        offset += payload.length;
+      }
+      return decodeChunks(chunks);
+    }
+    async function loadText(relative) {
+      let lastError = null;
+      for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt += 1) {
+        try {
+          return await fetchText(relative);
+        } catch (error) {
+          lastError = error;
+          if (attempt + 1 < FETCH_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      }
+      if (serviceUsable) {
+        try {
+          return await readViaService(relative);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/NO_SERVICE|not granted|not running|failed/i.test(message)) serviceUsable = false;
+          lastError = error;
+        }
+      }
+      const detail = lastError instanceof Error ? lastError.message : String(lastError);
+      throw new Error(`${relative} could not be loaded (${detail})`);
+    }
     async function ensureText(path) {
       const cached = textCache.get(path);
       if (cached !== void 0) return cached;
-      const text = await fetchText(path);
+      const text = await loadText(path);
       textCache.set(path, text);
       return text;
     }
     async function ensureFonts() {
       if (fonts) return fonts;
-      const payload = await fetchText(FONTS_PAYLOAD);
+      const payload = await ensureText(FONTS_PAYLOAD);
       const decoded = /* @__PURE__ */ new Map();
       for (const [name, base64] of Object.entries(JSON.parse(payload))) {
         decoded.set(name, decodeBase64(base64));
@@ -2168,26 +2256,15 @@ ${frag}
   var COMPOSE_MAX_CHARS = 16e3;
   var HEIGHT_MIN = 120;
   var HEIGHT_MAX = 4e3;
-  var BLOB_FALLBACK_MS = 2500;
   function createRenderer(options) {
     const { container, host, assets } = options;
     let frame = null;
-    let blobUrl = null;
-    let fallbackTimer = null;
     let mode = "dark";
     let generation = 0;
     function release() {
-      if (fallbackTimer !== null) {
-        window.clearTimeout(fallbackTimer);
-        fallbackTimer = null;
-      }
       if (frame) {
         frame.remove();
         frame = null;
-      }
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-        blobUrl = null;
       }
     }
     function postTheme() {
@@ -2241,27 +2318,11 @@ ${frag}
       iframe.setAttribute("sandbox", "allow-scripts");
       iframe.setAttribute("title", built.title || "Visual");
       iframe.style.height = `${HEIGHT_MIN}px`;
-      let loaded = false;
-      iframe.addEventListener("load", () => {
-        loaded = true;
-        if (fallbackTimer !== null) {
-          window.clearTimeout(fallbackTimer);
-          fallbackTimer = null;
-        }
-        postTheme();
-      });
-      blobUrl = URL.createObjectURL(new Blob([built.html], { type: "text/html" }));
-      iframe.src = blobUrl;
+      iframe.addEventListener("load", postTheme);
+      iframe.srcdoc = built.html;
       frame = iframe;
       container.append(iframe);
       container.scrollTop = scrollTop;
-      fallbackTimer = window.setTimeout(() => {
-        fallbackTimer = null;
-        if (!loaded && frame === iframe) {
-          iframe.removeAttribute("src");
-          iframe.srcdoc = built.html;
-        }
-      }, BLOB_FALLBACK_MS);
       let hostVersion = null;
       try {
         hostVersion = JSON.parse(assets.io.text("VERSIONS.json")).visuals ?? null;
@@ -2292,30 +2353,70 @@ ${frag}
   }
 
   // src/file-surface.ts
+  var OPEN_REQUEST_KEY = "open-request";
   function mountFileSurface(deps) {
     const { host, assets, root: root2 } = deps;
     const app = document.createElement("div");
     app.className = "app file-surface";
+    const bar = document.createElement("div");
+    bar.className = "file-bar";
+    const name = document.createElement("span");
+    name.className = "file-name";
+    const openSlot = document.createElement("div");
+    openSlot.className = "slot";
+    bar.append(name, openSlot);
     const noticeHost = document.createElement("div");
     noticeHost.className = "notice";
     const viewHost = document.createElement("div");
     viewHost.className = "view-host";
+    const loadingHost = document.createElement("div");
+    loadingHost.className = "loading-host";
+    viewHost.append(loadingHost);
     const metaHost = document.createElement("div");
     metaHost.className = "meta-host";
-    app.append(noticeHost, viewHost, metaHost);
+    app.append(bar, noticeHost, viewHost, metaHost);
     root2.append(app);
     const renderer = createRenderer({ container: viewHost, host, assets });
     let fragment = null;
     let version = "";
+    let fileName = "";
     let notice = null;
-    function show(tone2, title, body) {
+    let loading = null;
+    mountButton(openSlot, {
+      label: "Open in panel",
+      variant: "outline",
+      size: "xs",
+      onClick: () => {
+        void (async () => {
+          try {
+            await host.storage.set(OPEN_REQUEST_KEY, { name: fileName, at: Date.now() });
+          } catch {
+          }
+          try {
+            await host.openSurface("plugin:smolui");
+          } catch {
+            toast("error", "Could not open the SmolUI panel");
+          }
+        })();
+      }
+    });
+    function toast(kind, message) {
+      void host.toast({ kind, message }).catch(() => {
+      });
+    }
+    function show(tone2, title, body, action) {
       notice?.dispose();
-      notice = mountBanner(noticeHost, { tone: tone2, title, body });
+      notice = mountBanner(noticeHost, { tone: tone2, title, body, action });
+    }
+    function showLoading() {
+      loading?.dispose();
+      loading = mountSpinner(loadingHost, { label: "Loading visual" });
     }
     async function render(content) {
       notice?.dispose();
       notice = null;
       metaHost.replaceChildren();
+      showLoading();
       try {
         const info = await renderer.render(content);
         if (!info) return;
@@ -2333,13 +2434,23 @@ ${frag}
       } catch (error) {
         renderer.clear();
         if (error instanceof RenderError) {
-          show("error", error.code === "too-large" ? "Visual too large" : "Could not render this visual", error.message);
+          show(
+            "error",
+            error.code === "too-large" ? "Visual too large" : "Could not render this visual",
+            error.message,
+            { label: "Retry", onClick: () => void render(content) }
+          );
         } else {
           show("error", "Could not render this visual", error instanceof Error ? error.message : String(error));
         }
+      } finally {
+        loading?.dispose();
+        loading = null;
       }
     }
     host.onFileOpen((file) => {
+      fileName = file.name;
+      name.textContent = file.name;
       if (file.encoding !== "text") {
         renderer.clear();
         show("error", "Unsupported file", "This editor only opens text fragments.");
@@ -2386,6 +2497,21 @@ ${frag}
 
   // src/panel.ts
   var FRAGMENT_SUFFIX = ".visual.html";
+  var OPEN_REQUEST_KEY2 = "open-request";
+  var OPEN_REQUEST_TTL_MS = 6e4;
+  var PROMPT_HISTORY_KEY = "prompt-history";
+  var PROMPT_HISTORY_MAX = 6;
+  var SKILL_NOTICE_KEY = "skill-notice";
+  var SKILL_NOTICE_TTL_MS = 24 * 60 * 60 * 1e3;
+  var POLL_MS = 2500;
+  var POLL_MS_BUSY = 1e3;
+  var AUTO_OPEN_FRESH_MS = 2 * 60 * 1e3;
+  var SUGGESTIONS = [
+    "Chart this week's numbers",
+    "Map this route",
+    "Explain this with a diagram",
+    "Compare the options"
+  ];
   function el2(tag, className) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -2423,42 +2549,75 @@ ${frag}
     title.textContent = "SmolUI";
     const barActions = el2("div", "bar-actions");
     const backSlot = el2("div", "slot");
-    const refreshSlot = el2("div", "slot");
-    barActions.append(backSlot, refreshSlot);
+    barActions.append(backSlot);
     bar.append(title, barActions);
     const noticeHost = el2("div", "notice");
+    const promptRow = el2("form", "prompt-row");
+    const promptInput = el2("input", "prompt-input");
+    promptInput.type = "text";
+    promptInput.placeholder = "Ask for a chart, a map, a plan\u2026";
+    promptInput.setAttribute("aria-label", "Ask the agent");
+    const promptSlot = el2("div", "slot");
+    promptRow.append(promptInput, promptSlot);
+    const promptStatus = el2("div", "prompt-status");
     const listHost = el2("div", "list-host");
     const listBox = el2("div");
+    const listLoadingHost = el2("div", "loading-host");
     const listStateHost = el2("div");
-    listHost.append(listBox, listStateHost);
+    const chipHost = el2("div", "chip-row");
+    listHost.append(listBox, listLoadingHost, listStateHost, chipHost);
     const viewHost = el2("div", "view-host");
     viewHost.hidden = true;
+    const loadingHost = el2("div", "loading-host");
+    viewHost.append(loadingHost);
     const metaHost = el2("div", "meta-host");
     metaHost.hidden = true;
-    app.append(bar, noticeHost, listHost, viewHost, metaHost);
+    app.append(bar, promptRow, promptStatus, noticeHost, listHost, viewHost, metaHost);
     root2.append(app);
     const renderer = createRenderer({ container: viewHost, host, assets });
     let entries = [];
-    let listState = "ready";
+    let listState = "loading";
     let listError = "";
+    let paintedSignature = null;
     let state = "list";
     let openPath = null;
     let openMtime = 0;
     let openInfo = null;
     let lastDirectory;
+    let pollTimer = null;
+    let lastPollAt = 0;
+    let ticking = false;
+    let listGeneration = 0;
+    let busy = false;
+    let history = [];
+    let knownPaths = /* @__PURE__ */ new Set();
+    let newestSeen = null;
     let stateBlock = null;
     let noticeBlock = null;
     let metaButton = null;
+    let loadingBlock = null;
+    let chipButtons = [];
     const list = mountList(listBox, {
       items: [],
       ariaLabel: "Visuals",
       onSelect: (id) => void openVisual(id)
     });
     mountButton(backSlot, { label: "Back", variant: "ghost", size: "sm", onClick: () => showList() });
-    mountButton(refreshSlot, { label: "Refresh", variant: "ghost", size: "sm", onClick: () => void refresh() });
+    mountButton(promptSlot, { label: "Send", variant: "default", size: "sm", onClick: () => void sendPrompt() });
+    promptRow.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void sendPrompt();
+    });
+    function toast(kind, message) {
+      void host.toast({ kind, message }).catch(() => {
+      });
+    }
     function clearStateBlock() {
       stateBlock?.dispose();
       stateBlock = null;
+      for (const button2 of chipButtons) button2.dispose();
+      chipButtons = [];
+      chipHost.replaceChildren();
     }
     function clearNotice() {
       noticeBlock?.dispose();
@@ -2473,6 +2632,14 @@ ${frag}
       metaButton = null;
       metaHost.replaceChildren();
     }
+    function showLoading(label) {
+      loadingBlock?.dispose();
+      loadingBlock = mountSpinner(loadingHost, { label });
+    }
+    function clearLoading() {
+      loadingBlock?.dispose();
+      loadingBlock = null;
+    }
     function paintState() {
       const visual = state === "visual";
       backSlot.hidden = !visual;
@@ -2481,6 +2648,9 @@ ${frag}
       metaHost.hidden = !visual;
     }
     function paintList() {
+      const signature = entries.map((entry) => `${entry.path}:${entry.mtime}`).join("|");
+      if (listState === "ready" && entries.length > 0 && signature === paintedSignature) return;
+      paintedSignature = signature;
       clearStateBlock();
       if (listState === "ready" && entries.length > 0) {
         listBox.hidden = false;
@@ -2494,7 +2664,9 @@ ${frag}
         return;
       }
       listBox.hidden = true;
-      if (listState === "no-project") {
+      if (listState === "loading") {
+        stateBlock = mountSpinner(listLoadingHost, { label: "Loading visuals" });
+      } else if (listState === "no-project") {
         stateBlock = mountEmpty(listStateHost, {
           title: "No project open",
           body: "Open a project to see its visuals."
@@ -2502,8 +2674,9 @@ ${frag}
       } else if (listState === "no-visuals") {
         stateBlock = mountEmpty(listStateHost, {
           title: "No visuals yet",
-          body: "Ask the agent for a chart, diagram, or any visual; it writes one into .visuals/."
+          body: "Ask below \u2014 the agent writes a chart, map or plan into .visuals/."
         });
+        paintChips();
       } else if (listState === "not-granted") {
         stateBlock = mountBanner(listStateHost, {
           tone: "error",
@@ -2520,7 +2693,16 @@ ${frag}
         stateBlock = mountBanner(listStateHost, { tone: "error", title: "Could not read .visuals", body: listError });
       }
     }
-    async function refreshList() {
+    async function refreshList(quiet) {
+      const generation = listGeneration += 1;
+      if (!quiet && entries.length === 0) {
+        listState = "loading";
+        paintedSignature = null;
+        paintList();
+      }
+      let nextEntries = [];
+      let nextState;
+      let nextError = "";
       try {
         const { entries: directory } = await host.listDir(".visuals");
         const files = directory.filter((entry) => entry.kind === "file" && entry.name.endsWith(FRAGMENT_SUFFIX));
@@ -2536,24 +2718,113 @@ ${frag}
             }
           })
         );
-        entries = stats.sort((a, b) => b.mtime - a.mtime);
-        listState = entries.length > 0 ? "ready" : "no-visuals";
+        nextEntries = stats.sort((a, b) => b.mtime - a.mtime);
+        nextState = nextEntries.length > 0 ? "ready" : "no-visuals";
       } catch (error) {
-        entries = [];
         if (error instanceof HostRequestError && (error.code === "NOT_FOUND" || error.code === "BAD_PATH")) {
-          listState = "no-visuals";
+          nextState = "no-visuals";
         } else if (error instanceof HostRequestError && error.code === "NO_DIRECTORY") {
-          listState = "no-project";
+          nextState = "no-project";
         } else if (error instanceof HostRequestError && error.code === "NOT_GRANTED") {
-          listState = "not-granted";
+          nextState = "not-granted";
         } else if (error instanceof HostRequestError && error.code === "DISABLED") {
-          listState = "disabled";
+          nextState = "disabled";
         } else {
-          listState = "error";
-          listError = error instanceof HostRequestError ? `${error.code}: ${error.message}` : messageOf(error);
+          nextState = "error";
+          nextError = error instanceof HostRequestError ? `${error.code}: ${error.message}` : messageOf(error);
         }
       }
+      if (generation !== listGeneration) return null;
+      const newest = nextEntries[0] ?? null;
+      const change = {
+        newest,
+        isNew: newest ? !knownPaths.has(newest.path) : false,
+        changed: newest && newestSeen ? newestSeen.path === newest.path && newestSeen.mtime !== newest.mtime : false
+      };
+      knownPaths = new Set(nextEntries.map((entry) => entry.path));
+      newestSeen = newest ? { path: newest.path, mtime: newest.mtime } : null;
+      entries = nextEntries;
+      listState = nextState;
+      listError = nextError;
       paintList();
+      return change;
+    }
+    function considerAutoOpen(change, firstLoad) {
+      if (state !== "list" || !change.newest) return;
+      const fresh = Date.now() - change.newest.mtime < AUTO_OPEN_FRESH_MS;
+      const shouldOpen = firstLoad ? busy && fresh : change.isNew || busy && change.changed;
+      if (shouldOpen) void openVisual(change.newest.path);
+    }
+    function paintChips() {
+      for (const button2 of chipButtons) button2.dispose();
+      chipButtons = [];
+      chipHost.replaceChildren();
+      if (listState !== "no-visuals") return;
+      for (const item of history.length > 0 ? history : SUGGESTIONS) {
+        const slot = el2("div", "slot");
+        chipHost.append(slot);
+        chipButtons.push(
+          mountButton(slot, {
+            label: item,
+            variant: "outline",
+            size: "xs",
+            onClick: () => {
+              promptInput.value = item;
+              promptInput.focus();
+            }
+          })
+        );
+      }
+    }
+    async function loadHistory() {
+      try {
+        const raw = await host.storage.get(PROMPT_HISTORY_KEY);
+        const items = raw && typeof raw === "object" && !Array.isArray(raw) ? raw.items : null;
+        if (Array.isArray(items)) {
+          history = items.filter((item) => typeof item === "string").slice(0, PROMPT_HISTORY_MAX);
+        }
+      } catch {
+      }
+    }
+    async function rememberPrompt(text) {
+      history = [text, ...history.filter((item) => item !== text)].slice(0, PROMPT_HISTORY_MAX);
+      try {
+        await host.storage.set(PROMPT_HISTORY_KEY, { items: history });
+      } catch {
+      }
+      if (listState === "no-visuals") paintChips();
+    }
+    async function sendPrompt() {
+      const text = promptInput.value.trim();
+      if (!text) return;
+      const payload = openPath ? `Regarding \`${openPath}\`: ${text}` : text;
+      try {
+        const result = await host.prompt({ text: payload, send: true });
+        if (result.sent !== "sent") {
+          toast("info", result.sent === "no-model" ? "No model is selected in the chat." : "The message was not sent.");
+          return;
+        }
+        promptInput.value = "";
+        await rememberPrompt(text);
+      } catch (error) {
+        const message = error instanceof HostRequestError && error.code === "SESSION_BUSY" ? "The session is busy; try again when it finishes." : error instanceof HostRequestError && error.code === "NO_SESSION" ? "Open a chat first, then ask." : error instanceof HostRequestError && error.code === "NOT_GRANTED" ? "Approve the prompt capability in Settings \u2192 Extensions." : error instanceof HostRequestError ? `Could not send: ${error.message}` : "Could not send the prompt.";
+        toast("error", message);
+      }
+    }
+    async function consumeOpenRequest() {
+      try {
+        const raw = await host.storage.get(OPEN_REQUEST_KEY2);
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+        const name = raw.name;
+        if (typeof name !== "string") return;
+        await host.storage.delete(OPEN_REQUEST_KEY2);
+        const at = raw.at;
+        if (typeof at === "number" && Date.now() - at > OPEN_REQUEST_TTL_MS) return;
+        const slug = name.endsWith(FRAGMENT_SUFFIX) ? name.slice(0, -FRAGMENT_SUFFIX.length) : name;
+        const entry = entries.find((candidate) => candidate.slug === slug);
+        if (entry) void openVisual(entry.path);
+      } catch {
+      }
     }
     function showList() {
       state = "list";
@@ -2561,9 +2832,10 @@ ${frag}
       openInfo = null;
       clearNotice();
       clearMeta();
+      clearLoading();
       renderer.clear();
       paintState();
-      void refreshList();
+      void refreshList(false);
     }
     async function paintMeta() {
       clearMeta();
@@ -2590,21 +2862,28 @@ ${frag}
         variant: "outline",
         size: "xs",
         onClick: () => {
-          void host.writeClipboard(download).then(() => host.toast({ kind: "info", message: "Download path copied" })).catch(() => host.toast({ kind: "error", message: "Could not copy the path" }));
+          void host.writeClipboard(download).then(() => toast("info", "Download path copied")).catch(() => toast("error", "Could not copy the path"));
         }
       });
     }
     async function openVisual(path) {
+      const switching = openPath !== path;
       state = "visual";
       openPath = path;
       openInfo = null;
       clearNotice();
       clearMeta();
-      renderer.clear();
+      if (switching) renderer.clear();
       paintState();
+      showLoading("Loading visual");
       try {
         const { content } = await host.readFile(path);
+        if (openPath !== path) return;
         const info = await renderer.render(content);
+        if (openPath !== path || state !== "visual") {
+          renderer.clear();
+          return;
+        }
         if (!info) return;
         openInfo = info;
         try {
@@ -2621,6 +2900,7 @@ ${frag}
         }
         await paintMeta();
       } catch (error) {
+        if (openPath !== path || state !== "visual") return;
         renderer.clear();
         if (error instanceof RenderError) {
           const titles = {
@@ -2628,40 +2908,82 @@ ${frag}
             assets: "Could not load visual assets",
             build: "Could not build this visual"
           };
-          showNotice("error", titles[error.code] ?? "Could not render this visual", error.message);
+          clearNotice();
+          noticeBlock = mountBanner(noticeHost, {
+            tone: "error",
+            title: titles[error.code] ?? "Could not render this visual",
+            body: error.message,
+            action: { label: "Retry", onClick: () => void openVisual(path) }
+          });
         } else {
           const { title: heading, body } = explain(error);
-          showNotice("error", heading, body);
+          const permanent = error instanceof HostRequestError && ["NOT_FOUND", "NOT_GRANTED", "DISABLED", "NO_DIRECTORY", "FILE_TOO_LARGE"].includes(error.code);
+          if (permanent) {
+            showNotice("error", heading, body);
+          } else {
+            clearNotice();
+            noticeBlock = mountBanner(noticeHost, {
+              tone: "error",
+              title: heading,
+              body,
+              action: { label: "Retry", onClick: () => void openVisual(path) }
+            });
+          }
         }
+      } finally {
+        clearLoading();
       }
     }
-    async function reopenIfChanged(force) {
+    async function reopenIfChanged() {
       if (!openPath) return;
-      if (!force) {
-        try {
-          const stat = await host.stat(openPath);
-          if (stat.kind !== "file" || stat.mtime === openMtime) return;
-        } catch {
-          return;
-        }
+      try {
+        const stat = await host.stat(openPath);
+        if (stat.kind !== "file" || stat.mtime === openMtime) return;
+      } catch {
+        return;
       }
       await openVisual(openPath);
     }
-    async function refresh() {
-      if (state === "visual" && openPath) await reopenIfChanged(true);
-      else await refreshList();
+    async function tick() {
+      if (ticking || document.visibilityState !== "visible") return;
+      ticking = true;
+      try {
+        if (state === "visual" && openPath) {
+          await reopenIfChanged();
+          return;
+        }
+        const change = await refreshList(true);
+        if (change) considerAutoOpen(change, false);
+        await consumeOpenRequest();
+      } finally {
+        ticking = false;
+      }
     }
+    function startPolling() {
+      if (pollTimer !== null) return;
+      pollTimer = window.setInterval(() => {
+        const now = Date.now();
+        if (!busy && now - lastPollAt < POLL_MS) return;
+        lastPollAt = now;
+        void tick();
+      }, POLL_MS_BUSY);
+    }
+    host.onSession((session) => {
+      const next = Boolean(session?.busy);
+      if (next === busy) return;
+      busy = next;
+      promptStatus.textContent = busy ? "The agent is writing\u2026" : "";
+    });
     host.onSessionLifecycle(({ phase }) => {
       if (phase !== "completed") return;
-      if (state === "visual") void reopenIfChanged(false);
-      else void refreshList();
+      void tick();
     });
     host.onDirectory((directory) => {
       const changed = lastDirectory !== void 0 && directory !== lastDirectory;
       lastDirectory = directory;
       if (!changed) return;
       if (state === "visual") showList();
-      else void refreshList();
+      else void refreshList(true);
     });
     host.onItem((item) => {
       if (!item || item.kind !== "message") return;
@@ -2672,15 +2994,28 @@ ${frag}
       }
       void openVisual(path);
     });
-    void ensureSkill(host).then((result) => {
-      if (result === "installed") void host.toast({ kind: "success", message: "SmolUI skill installed for OpenCode." });
-      else if (result === "updated") void host.toast({ kind: "success", message: "SmolUI skill updated for OpenCode." });
+    void ensureSkill(host).then(async (result) => {
+      if (result === "installed") toast("success", "SmolUI skill installed for OpenCode.");
+      else if (result === "updated") toast("success", "SmolUI skill updated for OpenCode.");
       else if (result === "unavailable") {
-        void host.toast({ kind: "error", message: "Skill not installed: approve the local service in Settings \u2192 Extensions." });
+        try {
+          const raw = await host.storage.get(SKILL_NOTICE_KEY);
+          const at = raw && typeof raw === "object" && !Array.isArray(raw) ? Number(raw.at) : 0;
+          if (Number.isFinite(at) && Date.now() - at < SKILL_NOTICE_TTL_MS) return;
+          await host.storage.set(SKILL_NOTICE_KEY, { at: Date.now() });
+        } catch {
+        }
+        toast("error", "Skill not installed: approve the local service in Settings \u2192 Extensions.");
       }
     });
     paintState();
-    void refreshList();
+    void (async () => {
+      await loadHistory();
+      const change = await refreshList(false);
+      if (change) considerAutoOpen(change, true);
+      await consumeOpenRequest();
+      startPolling();
+    })();
     return {
       setTheme(mode) {
         renderer.setTheme(mode);
@@ -2696,17 +3031,24 @@ ${frag}
     root.textContent = "SmolUI runs inside OpenChamber. Open it from the rail or the Extensions menu.";
   } else {
     const host = connectHost();
-    const assets = createAssets();
+    const assets = createAssets(host);
     let surface = null;
     host.onReady((ctx) => {
-      applyHostReady(ctx, document.documentElement);
+      try {
+        applyHostReady(ctx, document.documentElement);
+      } catch {
+      }
       document.body.dataset.surface = ctx.surface;
       if (surface) {
         surface.setTheme(ctx.theme.mode);
         return;
       }
-      surface = ctx.surface === "file" ? mountFileSurface({ host, assets, root }) : mountPanelSurface({ host, assets, root });
-      surface.setTheme(ctx.theme.mode);
+      try {
+        surface = ctx.surface === "file" ? mountFileSurface({ host, assets, root }) : mountPanelSurface({ host, assets, root });
+        surface.setTheme(ctx.theme.mode);
+      } catch (error) {
+        root.textContent = `SmolUI failed to start: ${error instanceof Error ? error.message : String(error)}`;
+      }
     });
   }
 })();

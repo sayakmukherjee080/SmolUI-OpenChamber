@@ -7,6 +7,8 @@ Write the diagram source inside `<pre class="mermaid" role="img" aria-label="...
 
 Download size: a page with a Mermaid diagram is about 5.4 MB because the engine travels inside the file. For a simple flow of a few boxes, the HTML `.stepper`, `.timeline` or a small D3 graphic is a far lighter download; use Mermaid when the structure really is a graph, sequence, state machine or schema.
 
+A flowchart shows the abstract path. When the question is about moving parts — a gear train, an escapement, an engine — prefer motion: see `references/motion.md`.
+
 ## Direction
 Use **`flowchart TB`** (top to bottom). `LR` shrinks to unreadable text in a side panel. Use `LR` only for a chain of at most four short nodes. The lint warns on `LR`.
 

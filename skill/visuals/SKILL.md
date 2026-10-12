@@ -18,7 +18,7 @@ Turn a request for a visual into one self-contained, themed HTML fragment at `.v
 5. **Lint:** `node <skill-dir>/scripts/lint.mjs .visuals/<slug>.visual.html`. Fix every ERROR and read every warning. Do not report done until it prints `OK: 0 errors`. If Node is unavailable, say the lint was not run.
 6. **Build the download (always).** `node <skill-dir>/scripts/assemble.mjs .visuals/<slug>.visual.html` writes `.visuals/<slug>.html`: one self-contained file (styles, fonts, libraries all inside, works offline, follows the viewer's light/dark setting). This is the file the user downloads and shares, so build it after every change. It lints again and refuses on errors. Never edit that file by hand.
 7. **Optional dark check:** `node <skill-dir>/scripts/assemble.mjs .visuals/<slug>.visual.html --theme dark --out .visuals/.build/<slug>-dark.html` and open the result.
-8. **Reply with one line:** the takeaway in one sentence, then the two paths: the fragment and the download. Never paste HTML into the chat. If `.gitignore` does not list `.visuals/`, mention it once; do not edit it.
+8. **Reply with one line:** the takeaway in one sentence, then the two paths: the fragment and the download, then where to open it — "open it from the SmolUI panel, or ⋯ → Open as visualization on this message". Never paste HTML into the chat. If `.gitignore` does not list `.visuals/`, mention it once; do not edit it.
 
 ## Which tool
 
@@ -28,11 +28,13 @@ Turn a request for a visual into one self-contained, themed HTML fragment at `.v
 | Trend, comparison, share, distribution (line, bar, doughnut, scatter, radar) | Chart.js (`libs: chart`) | `references/charts.md` |
 | Heatmap, treemap, network, histogram, small multiples, custom scales | D3 (`libs: d3`) | `references/d3.md` |
 | Flow, architecture, sequence, state, ER, schedule, timeline, mind map | Mermaid (`libs: mermaid`) | `references/diagrams.md` |
+| How a mechanism or machine works: gears, escapement, engine, moving parts | Motion first: animated SVG (no library) or Three.js (`libs: three`); label illustrative geometry | `references/motion.md` |
 | Spatial structure, 3D surface or bars | Three.js (`libs: three`) | `references/three.md` |
+| Route, places, geography | Schematic SVG map, or a D3 vector map with an embedded GeoJSON extract (no tiles) | `references/maps.md` |
 | Formula, derivation, worked example | KaTeX (`libs: katex`) | `references/math.md` |
 | What-if with sliders | Chart.js or plain HTML plus a short script | `references/charts.md` |
 
-Use the simplest tool that works: HTML before Chart.js, Chart.js before D3. Pie charts are Chart.js doughnuts, never Mermaid. 3D only when the data is truly spatial. Libraries are already loaded as globals once declared in the manifest. Nothing else exists: no CDN, no other libraries.
+Use the simplest tool that works: HTML before Chart.js, Chart.js before D3. Pie charts are Chart.js doughnuts, never Mermaid. 3D only when the data is truly spatial. A mechanism with moving parts is temporal or spatial: animate it instead of drawing a static flowchart. Libraries are already loaded as globals once declared in the manifest. Nothing else exists: no CDN, no other libraries.
 
 ## The fragment
 
@@ -71,9 +73,17 @@ First line is the manifest. Then, in this order:
 - **Width:** design for a 400 to 500 px panel; the download shows it in a centred column up to 760 px. Size with the container, not the viewport; no media queries. Keep labels short.
 - **Language:** write labels in the user's language (Indic scripts render). Format numbers with `Visuals.fmt.num / compact / pct / ms` (en-IN grouping by default; `Visuals.setLocale("en-US")` to change).
 
+## Motion
+
+A process that moves should be shown moving. Animate process, mechanism and state change — never decoration. One-shot entrance animations on load are fine; a repeating loop needs a visible control (play / pause / step) and must stop when paused. Read `Visuals.tokens().reduceMotion` and skip or instant-complete your animation when it is true (charts follow it themselves). The lint warns (W22) on an animation loop with no reduced-motion guard. Recipes: `references/motion.md`.
+
 ## Interactivity
 
 Allowed: tabs, toggles, filters, sliders, hover tooltips, expand/collapse, theme-aware redraws (`Visuals.onTheme(fn)`). The visual runs in a sandbox, so it cannot reach the network or the page. To ask the agent something from inside a visual, call `Visuals.ask("question")`. It works only in the panel: in a downloaded file there is no agent, so hide the button there with `if (!Visuals.hasHost) button.hidden = true`. The visual must make sense without it.
+
+- **Related queries.** End an answer with two or three `Visuals.ask(...)` buttons that refine it ("Add a lunch stop", "Avoid steep walks"). They are the reader's next prompt, so make each one specific.
+- **Ask as a control.** Anything the reader picks — a step, a stop, a segment — can travel with the ask: name the choice inside the text ("In `.visuals/route-map.visual.html` the reader selected the escapement; explain the impulse").
+- **Refresh loop.** A "Refresh data" button may ask the agent to re-run the query and update the same file; the panel shows the new version within seconds. Offer it only when the data has a source the agent can re-run.
 
 ## References (open only the one you need)
 
@@ -82,7 +92,10 @@ Allowed: tabs, toggles, filters, sliders, hover tooltips, expand/collapse, theme
 - `references/d3.md` - D3 helpers and recipes
 - `references/diagrams.md` - Mermaid types, direction, node classes, size limits
 - `references/three.md` - 3D scene bootstrap
+- `references/motion.md` - animation, reduced motion, guided tours, exploded views
+- `references/maps.md` - schematic and vector maps without tiles
+- `references/media.md` - photos as data URIs, the chat gallery, what never loads
 - `references/math.md` - KaTeX markup and macros
 - `references/tokens.md` - every design token by name
 - `references/shell.md` - what a host must provide (for people building the panel, not for you)
-- `examples/` - ten linted, rendered, working visuals: `01-kpi-table`, `02-line-chart`, `03-bar-compare`, `04-flow`, `05-architecture`, `06-scene-3d`, `07-formula`, `08-what-if`, `09-heatmap-d3`, `10-share-tabs` (doughnut with tabs and a data table)
+- `examples/` - eleven linted, rendered, working visuals: `01-kpi-table`, `02-line-chart`, `03-bar-compare`, `04-flow`, `05-architecture`, `06-scene-3d`, `07-formula`, `08-what-if`, `09-heatmap-d3`, `10-share-tabs` (doughnut with tabs and a data table), `11-route-map` (schematic route with filter chips and related queries)

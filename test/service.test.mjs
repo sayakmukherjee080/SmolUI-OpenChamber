@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const TOKEN = "smolui-test-token";
+const VERSION = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version;
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -58,7 +59,7 @@ try {
   const before = await call("GET", "/setup/status");
   assert.equal(before.status, 200);
   assert.equal(before.body.installed, false);
-  assert.equal(before.body.packageVersion, "0.1.0");
+  assert.equal(before.body.packageVersion, VERSION);
 
   const install = await call("POST", "/setup/install");
   assert.equal(install.status, 200);
@@ -68,7 +69,7 @@ try {
   assert.ok((await stat(path.join(skillDir, "SKILL.md"))).isFile(), "SKILL.md installed");
   assert.ok((await stat(path.join(skillDir, "assets", "visuals.css"))).isFile(), "skill assets installed");
   assert.ok((await stat(path.join(skillDir, "scripts", "assemble.mjs"))).isFile(), "skill scripts installed");
-  assert.equal((await readFile(path.join(skillDir, ".smolui-version"), "utf8")).trim(), "0.1.0");
+  assert.equal((await readFile(path.join(skillDir, ".smolui-version"), "utf8")).trim(), VERSION);
 
   const again = await call("POST", "/setup/install");
   assert.equal(again.status, 200);
@@ -76,12 +77,32 @@ try {
 
   const after = await call("GET", "/setup/status");
   assert.equal(after.body.installed, true);
-  assert.equal(after.body.installedVersion, "0.1.0");
+  assert.equal(after.body.installedVersion, VERSION);
 
   const unknown = await call("GET", "/nope");
   assert.equal(unknown.status, 404);
 
-  console.log("service: health, auth, install, idempotency OK");
+  // asset chunks: exact bytes, chunked reads, path-confined
+  const versionsPath = "skill%2Fvisuals%2Fassets%2FVERSIONS.json";
+  const whole = await call("GET", `/assets?path=${versionsPath}&offset=0&length=200000`);
+  assert.equal(whole.status, 200);
+  const raw = await readFile(path.join(ROOT, "skill", "visuals", "assets", "VERSIONS.json"));
+  assert.equal(Buffer.from(whole.body.data, "base64").toString("utf8"), raw.toString("utf8"));
+  assert.equal(whole.body.total, raw.length);
+
+  const first = await call("GET", `/assets?path=${versionsPath}&offset=0&length=10`);
+  const second = await call("GET", `/assets?path=${versionsPath}&offset=10&length=10`);
+  assert.equal(first.body.offset, 0);
+  assert.equal(first.body.length, 10);
+  assert.equal(Buffer.from(first.body.data, "base64").length, 10);
+  assert.equal(second.body.offset, 10);
+
+  const outside = await call("GET", "/assets?path=package.json&offset=0&length=10");
+  assert.equal(outside.status, 400);
+  const traversal = await call("GET", "/assets?path=skill%2F..%2Fpackage.json&offset=0&length=10");
+  assert.equal(traversal.status, 400);
+
+  console.log("service: health, auth, install, idempotency, asset chunks OK");
 } finally {
   child.kill("SIGTERM");
   await rm(home, { recursive: true, force: true });

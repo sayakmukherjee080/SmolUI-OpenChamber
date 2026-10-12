@@ -35,7 +35,6 @@ const MAX_FRAGMENT_CHARS = 200_000;
 const COMPOSE_MAX_CHARS = 16_000;
 const HEIGHT_MIN = 120;
 const HEIGHT_MAX = 4000;
-const BLOB_FALLBACK_MS = 2500;
 
 export type Renderer = {
   /** Renders the fragment; null when a newer render superseded this one. */
@@ -48,24 +47,14 @@ export type Renderer = {
 export function createRenderer(options: { container: HTMLElement; host: Host; assets: Assets }): Renderer {
   const { container, host, assets } = options;
   let frame: HTMLIFrameElement | null = null;
-  let blobUrl: string | null = null;
-  let fallbackTimer: number | null = null;
   let mode: "light" | "dark" = "dark";
   let generation = 0;
 
-  /** Removes the current frame, its blob URL, and any pending fallback. */
+  /** Removes the current frame. */
   function release(): void {
-    if (fallbackTimer !== null) {
-      window.clearTimeout(fallbackTimer);
-      fallbackTimer = null;
-    }
     if (frame) {
       frame.remove();
       frame = null;
-    }
-    if (blobUrl) {
-      URL.revokeObjectURL(blobUrl);
-      blobUrl = null;
     }
   }
 
@@ -130,27 +119,14 @@ export function createRenderer(options: { container: HTMLElement; host: Host; as
     iframe.setAttribute("sandbox", "allow-scripts");
     iframe.setAttribute("title", built.title || "Visual");
     iframe.style.height = `${HEIGHT_MIN}px`;
-    let loaded = false;
-    iframe.addEventListener("load", () => {
-      loaded = true;
-      if (fallbackTimer !== null) {
-        window.clearTimeout(fallbackTimer);
-        fallbackTimer = null;
-      }
-      postTheme();
-    });
-    blobUrl = URL.createObjectURL(new Blob([built.html], { type: "text/html" }));
-    iframe.src = blobUrl;
+    iframe.addEventListener("load", postTheme);
+    // srcdoc, not a blob URL: OpenChamber's own HTML previews render this way,
+    // every browser loads it from a sandboxed parent, and the standalone page
+    // is self-contained, so it needs no URL of its own.
+    iframe.srcdoc = built.html;
     frame = iframe;
     container.append(iframe);
     container.scrollTop = scrollTop;
-    fallbackTimer = window.setTimeout(() => {
-      fallbackTimer = null;
-      if (!loaded && frame === iframe) {
-        iframe.removeAttribute("src");
-        iframe.srcdoc = built.html;
-      }
-    }, BLOB_FALLBACK_MS);
 
     let hostVersion: string | null = null;
     try {

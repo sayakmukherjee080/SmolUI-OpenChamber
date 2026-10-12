@@ -52,7 +52,7 @@ for (const fontPath of fontPaths) {
 
 // 2. every example, both themes, byte-identical to the Node assembler.
 const examples = readdirSync(EXAMPLES).filter((name) => name.endsWith(".visual.html")).sort();
-assert.equal(examples.length, 10, "ten golden examples");
+assert.equal(examples.length, 11, "eleven golden examples");
 let comparisons = 0;
 for (const file of examples) {
   const fragment = readFileSync(path.join(EXAMPLES, file), "utf8");
