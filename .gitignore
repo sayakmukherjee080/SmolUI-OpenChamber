@@ -4,3 +4,6 @@ temp/
 dist/
 .visuals/
 *.log
+# local only: the reference kit and the builder handoff
+v1-reference-kit/
+visuals-builder-handoff.md
