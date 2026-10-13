@@ -23,7 +23,7 @@ try {
   await cp(path.join(ROOT, "skill", "visuals"), path.join(config, "skills", "visuals"), { recursive: true });
   await cp(path.join(ROOT, "plugin", "visuals.js"), path.join(config, "plugins", "visuals.js"));
   await cp(
-    path.join(ROOT, "v1-reference-kit", "skill", "visuals", "examples", "01-kpi-table.visual.html"),
+    path.join(ROOT, "skill", "visuals", "examples", "01-kpi-table.visual.html"),
     path.join(project, ".visuals", "kpi.visual.html"),
   );
 

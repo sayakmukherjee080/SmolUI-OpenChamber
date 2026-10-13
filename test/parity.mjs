@@ -9,12 +9,12 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildStandalone } from "../skill/visuals/scripts/assemble-core.mjs";
-import { assemble } from "../v1-reference-kit/skill/visuals/scripts/assemble.mjs";
+import { assemble } from "../skill/visuals/scripts/assemble.mjs";
 import { textAssetsFor } from "../src/asset-paths.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const ASSETS = path.join(ROOT, "skill", "visuals", "assets");
-const EXAMPLES = path.join(ROOT, "v1-reference-kit", "skill", "visuals", "examples");
+const EXAMPLES = path.join(ROOT, "skill", "visuals", "examples");
 
 const fontsPayload = JSON.parse(readFileSync(path.join(ASSETS, "fonts.gen.json"), "utf8"));
 const requestedText = new Set();

@@ -40,9 +40,9 @@
         if (seededRequest) store.set("open-request", { name: `${seededRequest}.visual.html`, at: Date.now() });
 
         const fixtures = [
-          ["kpi", "/v1-reference-kit/skill/visuals/examples/01-kpi-table.visual.html", 3],
-          ["line", "/v1-reference-kit/skill/visuals/examples/02-line-chart.visual.html", 1],
-          ["whatif", "/v1-reference-kit/skill/visuals/examples/08-what-if.visual.html", 2],
+          ["kpi", "/skill/visuals/examples/01-kpi-table.visual.html", 3],
+          ["line", "/skill/visuals/examples/02-line-chart.visual.html", 1],
+          ["whatif", "/skill/visuals/examples/08-what-if.visual.html", 2],
         ];
         const fixturesReady = Promise.all(
           fixtures.map(async ([slug, url, order]) => {

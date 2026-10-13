@@ -1,7 +1,7 @@
 # Third-party notices
 
 This package redistributes material from other projects. The full license
-texts are in `licenses/` (copied from `v1-reference-kit/licenses/`).
+texts are in `licenses/`.
 
 | Material | Where | License |
 | --- | --- | --- |

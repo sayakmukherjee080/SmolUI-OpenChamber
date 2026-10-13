@@ -1,11 +1,15 @@
-// Builds the installable package from the reference kit:
-//   1. syncs v1-reference-kit/skill/visuals into skill/visuals (committed)
+// Builds the installable package:
+//   1. syncs v1-reference-kit/skill/visuals into skill/visuals when the kit is
+//      present (it is maintained outside this repository); without it the
+//      committed skill/visuals is used as is
 //   2. generates skill/visuals/assets/fonts.gen.json (base64 fonts payload)
 //   3. bundles src/main.ts into panel/main.js (IIFE, committed)
-//   4. copies the licenses into the package
+//   4. builds plugin/visuals.ts into plugin/visuals.js (ESM, committed)
+//   5. copies the licenses into the package
 // The service (service/main.cjs) is hand-written and needs no build step.
 
 import { cp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -15,7 +19,12 @@ const KIT_SKILL = path.join(ROOT, "v1-reference-kit", "skill", "visuals");
 const SKILL = path.join(ROOT, "skill", "visuals");
 const ASSETS = path.join(SKILL, "assets");
 
+/** Copies the kit's skill into the package when the kit is present. */
 async function syncSkill() {
+  if (!existsSync(KIT_SKILL)) {
+    console.log("smolui: no v1-reference-kit here, using the committed skill/visuals as is");
+    return;
+  }
   await rm(SKILL, { recursive: true, force: true });
   await cp(KIT_SKILL, SKILL, { recursive: true });
 }
@@ -62,16 +71,8 @@ async function buildPlugin() {
   });
 }
 
-/** Copies the kit's license texts into the package. */
-async function copyLicenses() {
-  const target = path.join(ROOT, "licenses");
-  await rm(target, { recursive: true, force: true });
-  await cp(path.join(ROOT, "v1-reference-kit", "licenses"), target, { recursive: true });
-}
-
 await syncSkill();
 const fontCount = await buildFontsPayload();
 await buildPanel();
 await buildPlugin();
-await copyLicenses();
-console.log(`smolui: skill synced, ${fontCount} fonts embedded as payload, panel/main.js and plugin/visuals.js built, licenses copied`);
+console.log(`smolui: skill ready, ${fontCount} fonts embedded as payload, panel/main.js and plugin/visuals.js built`);
