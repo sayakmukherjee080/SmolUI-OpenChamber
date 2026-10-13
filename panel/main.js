@@ -2995,8 +2995,8 @@ ${frag}
       void openVisual(path);
     });
     void ensureSkill(host).then(async (result) => {
-      if (result === "installed") toast("success", "SmolUI skill installed for OpenCode.");
-      else if (result === "updated") toast("success", "SmolUI skill updated for OpenCode.");
+      if (result === "installed") toast("success", "SmolUI skill and tool installed for OpenCode. Restart OpenCode once to load the tool.");
+      else if (result === "updated") toast("success", "SmolUI skill and tool updated. Restart OpenCode once to load the tool.");
       else if (result === "unavailable") {
         try {
           const raw = await host.storage.get(SKILL_NOTICE_KEY);

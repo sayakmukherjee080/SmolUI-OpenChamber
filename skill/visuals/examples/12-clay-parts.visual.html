@@ -1,0 +1,101 @@
+<!-- visuals: 1.2 libs: three -->
+<hgroup>
+<h1>Four wheels step one drive down to the output</h1>
+<p>Illustrative gear train lying flat: clay wheels, one accent on the driver. Drag to orbit, scroll to zoom, right-drag to pan.</p>
+</hgroup>
+
+<figure>
+<div class="scene wide" id="scene" role="img" aria-label="Clay gear train lying flat on a floor: an accented driver pinion turns three larger holed wheels in a chain, and they keep turning while the animation runs.">
+  <span class="scene-label" id="label-driver">Driver pinion</span>
+  <span class="scene-label" id="label-output">Output wheel</span>
+  <div class="controls">
+    <button id="labels" class="sm">Labels</button>
+    <button id="reset" class="sm">Reset view</button>
+    <button id="run" class="sm">Pause</button>
+  </div>
+</div>
+<figcaption>Illustrative geometry: a four-wheel chain, teeth, holes and ratios simplified. Drag to orbit, scroll to zoom, right-drag to pan. As of 2026-10-13.</figcaption>
+</figure>
+
+<ul class="legend"><li class="k-accent">Driver</li><li class="k-clay">Wheel A</li><li class="k-clay-2">Wheel B</li><li class="k-clay-3">Output</li></ul>
+<p>Each pair touches at the sum of its radii, and the chain reverses direction at every mesh, so the output turns against the driver.</p>
+
+<script type="application/json" id="data">
+{ "wheels": [
+  { "id": "driver", "x": -2.40, "radius": 0.42, "teeth": 10, "holes": 4, "tint": "accent", "rate": 1.5 },
+  { "id": "a", "x": -1.28, "radius": 0.70, "teeth": 14, "holes": 5, "tint": 0, "rate": -0.9 },
+  { "id": "b", "x": 0.37, "radius": 0.95, "teeth": 18, "holes": 5, "tint": 1, "rate": 0.66 },
+  { "id": "output", "x": 2.52, "radius": 1.20, "teeth": 22, "holes": 6, "tint": 2, "rate": -0.52 }
+] }
+</script>
+<script>
+const data = JSON.parse(document.getElementById("data").textContent);
+const th = Visuals.three;
+const calm = Visuals.tokens().reduceMotion;
+const s = th.create({ container: "#scene", OrbitControls: THREE.OrbitControls, up: "z", position: [7, -8, 9], target: [0.45, 0, 0], shadowSize: 9 });
+
+const gears = [];
+data.wheels.forEach(function (wheel) {
+  const group = new THREE.Group();
+  const material = wheel.tint === "accent" ? th.accent() : th.clay(wheel.tint);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(wheel.radius, wheel.radius, 0.32, 64), material);
+  body.rotation.x = Math.PI / 2;
+  group.add(body);
+  group.add(th.holes(wheel.holes, { ring: wheel.radius * 0.45, size: wheel.radius * 0.15 }));
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(wheel.radius * 0.2, wheel.radius * 0.2, 0.5, 32), th.clay(3));
+  hub.rotation.x = Math.PI / 2;
+  group.add(hub);
+  for (let i = 0; i < wheel.teeth; i += 1) {
+    const a = (i / wheel.teeth) * Math.PI * 2;
+    const tooth = new THREE.Mesh(new THREE.BoxGeometry(wheel.radius * 0.22, wheel.radius * 0.3, 0.32), material);
+    tooth.position.set(Math.cos(a) * wheel.radius * 1.05, Math.sin(a) * wheel.radius * 1.05, 0);
+    tooth.rotation.z = a;
+    group.add(tooth);
+  }
+  group.position.set(wheel.x, 0, 0.16);
+  s.add(group);
+  gears.push({ group: group, rate: wheel.rate });
+});
+
+const labels = [
+  ["label-driver", new THREE.Vector3(data.wheels[0].x, 0, 0.9)],
+  ["label-output", new THREE.Vector3(data.wheels[3].x, 0, 1.1)]
+];
+document.querySelectorAll(".scene-label").forEach(function (el) { el.style.transform = "translate(-50%, -100%)"; });
+function place() {
+  labels.forEach(function (item) {
+    const p = th.project(s, item[1]);
+    const el = document.getElementById(item[0]);
+    el.style.left = p.x + "px";
+    el.style.top = p.y + "px";
+  });
+}
+place();
+if (s.controls) s.controls.addEventListener("change", place);
+document.getElementById("labels").addEventListener("click", function () {
+  document.querySelectorAll(".scene-label").forEach(function (el) { el.hidden = !el.hidden; });
+});
+document.getElementById("reset").addEventListener("click", s.reset);
+
+const run = document.getElementById("run");
+let playing = true, spin = 0, last = performance.now();
+function step() {
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (playing) spin += dt;
+  gears.forEach(function (gear) { gear.group.rotation.z = spin * gear.rate; });
+}
+if (calm) {
+  run.hidden = true;
+  s.render();
+} else {
+  s.onFrame(step);
+  s.start();
+  run.addEventListener("click", function () {
+    if (playing) { s.stop(); run.textContent = "Play"; }
+    else { last = performance.now(); s.start(); run.textContent = "Pause"; }
+    playing = !playing;
+  });
+}
+</script>

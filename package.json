@@ -1,6 +1,6 @@
 {
   "name": "smolui-openchamber",
-  "version": "0.1.7",
+  "version": "0.1.15",
   "private": true,
   "description": "SmolUI: renders agent-written .visual.html fragments inside OpenChamber and installs the visuals skill for OpenCode.",
   "license": "MIT",
@@ -20,6 +20,16 @@
       "capabilities": [
         "files",
         "prompt"
+      ],
+      "tools": [
+        {
+          "match": "smolui_visuals",
+          "name": "Visual",
+          "icon": "icon.svg",
+          "title": "{input.file}",
+          "subtitle": "{metadata.summary}",
+          "output": "text"
+        }
       ],
       "actions": [
         {
@@ -51,14 +61,16 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "package": "node scripts/build.mjs && node scripts/package.mjs",
-    "typecheck": "tsc --noEmit",
-    "test": "node test/parser.test.mjs && node test/parity.mjs && node test/service.test.mjs",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p plugin/tsconfig.json",
+    "test": "node test/parser.test.mjs && node test/parity.mjs && node test/service.test.mjs && node test/plugin.test.mjs",
     "test:browser": "node scripts/build.mjs && node test/harness.mjs"
   },
   "dependencies": {
     "@openchamber/sdk": "2.2.0"
   },
   "devDependencies": {
+    "@opencode/plugin": "2.0.26",
+    "@types/node": "25.6.0",
     "esbuild": "0.28.2",
     "playwright": "1.59.1",
     "typescript": "6.0.2"

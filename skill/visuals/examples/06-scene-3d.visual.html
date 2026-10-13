@@ -1,31 +1,52 @@
 <!-- visuals: 1.2 libs: three -->
 <hgroup>
 <h1>Failures cluster in the afternoon in every region</h1>
-<p>Failures per hour by region and shift. Drag to orbit, scroll to zoom.</p>
+<p>Illustrative data. Clay bars: region by depth, shift by width. Drag to orbit, scroll to zoom.</p>
 </hgroup>
 
 <figure>
-<div class="scene" id="scene" role="img" aria-label="3D bar chart of failures by region and shift. Bars are tallest in the Day and Evening shifts. Delhi Day is the highest bar at 26."></div>
-<figcaption>Source: illustrative example data. Axes: region (depth), shift (width), failures per hour (height).</figcaption>
+<div class="scene" id="scene" role="img" aria-label="Clay bar chart of failures per hour by region and shift. Bars are tallest in the Day shift in every region, and Delhi's Day bar is the tallest of all at 26.">
+  <span class="scene-label" id="label-peak">Delhi, Day: 26</span>
+  <div class="controls"><button id="labels" class="sm">Labels</button></div>
+</div>
+<figcaption>Illustrative example data. Axes: region (depth), shift (width), failures per hour (height). As of 2026-10-13.</figcaption>
 </figure>
 
-<ul class="legend"><li class="c1">Mumbai</li><li class="c2">Delhi</li><li class="c3">Chennai</li></ul>
-<p>The afternoon (Day) shift has the most failures everywhere. Delhi peaks at 26 per hour.</p>
+<ul class="legend"><li class="k-clay">Mumbai</li><li class="k-clay-2">Delhi</li><li class="k-clay-3">Chennai</li><li class="k-accent">Peak: Delhi, Day</li></ul>
+<p>The afternoon (Day) shift has the most failures everywhere. Delhi peaks at 26 per hour, the accent bar.</p>
 
 <script type="application/json" id="data">
-{ "regions": ["Mumbai","Delhi","Chennai"], "shifts": ["Night","Morning","Day","Evening"],
-  "values": [[2,8,19,12],[1,11,26,17],[1,6,13,7]] }
+{ "regions": ["Mumbai", "Delhi", "Chennai"], "shifts": ["Night", "Morning", "Day", "Evening"],
+  "values": [[2, 8, 19, 12], [1, 11, 26, 17], [1, 6, 13, 7]] }
 </script>
 <script>
 const data = JSON.parse(document.getElementById("data").textContent);
 const th = Visuals.three;
-const s = th.create({ container: "#scene", OrbitControls: THREE.OrbitControls, position: [7, 6, 8.5], gridSize: 8, gridDivisions: 8 });
-const max = Math.max(...data.values.flat());
-data.values.forEach((row, r) => row.forEach((v, c) => {
-  const h = (v / max) * 4;
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.8, h, 0.8), th.material(r));
-  bar.position.set((c - 1.5) * 1.5, h / 2, (r - 1) * 1.5);
-  s.scene.add(bar);
-}));
-s.controls.target.set(0, 1.5, 0);
+const s = th.create({ container: "#scene", OrbitControls: THREE.OrbitControls, orbit: "studio", position: [8, 7, 9], target: [0, 1.4, 0] });
+const max = Math.max.apply(null, data.values.flat());
+let peak = null;
+data.values.forEach(function (row, r) {
+  row.forEach(function (value, c) {
+    const height = (value / max) * 3.2 + 0.2;
+    const isPeak = r === 1 && c === 2;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.9, height, 0.9), isPeak ? th.accent() : th.clay(r));
+    bar.position.set((c - 1.5) * 1.3, height / 2, (r - 1) * 1.5);
+    s.add(bar);
+    if (isPeak) peak = bar;
+  });
+});
+
+const label = document.getElementById("label-peak");
+const anchor = new THREE.Vector3(peak.position.x, peak.position.y + 0.6, peak.position.z);
+label.style.transform = "translate(-50%, -100%)";
+function place() {
+  const p = th.project(s, anchor);
+  label.style.left = p.x + "px";
+  label.style.top = p.y + "px";
+}
+place();
+if (s.controls) s.controls.addEventListener("change", place);
+document.getElementById("labels").addEventListener("click", function () {
+  document.querySelectorAll(".scene-label").forEach(function (el) { el.hidden = !el.hidden; });
+});
 </script>

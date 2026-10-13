@@ -48,6 +48,20 @@ async function buildPanel() {
   });
 }
 
+/** Bundles the OpenCode plugin (the `visuals` tool); the plugin SDK stays external. */
+async function buildPlugin() {
+  await build({
+    entryPoints: [path.join(ROOT, "plugin", "visuals.ts")],
+    bundle: true,
+    external: ["@opencode/plugin"],
+    format: "esm",
+    platform: "node",
+    target: "es2022",
+    outfile: path.join(ROOT, "plugin", "visuals.js"),
+    logLevel: "warning",
+  });
+}
+
 /** Copies the kit's license texts into the package. */
 async function copyLicenses() {
   const target = path.join(ROOT, "licenses");
@@ -58,5 +72,6 @@ async function copyLicenses() {
 await syncSkill();
 const fontCount = await buildFontsPayload();
 await buildPanel();
+await buildPlugin();
 await copyLicenses();
-console.log(`smolui: skill synced, ${fontCount} fonts embedded as payload, panel/main.js built, licenses copied`);
+console.log(`smolui: skill synced, ${fontCount} fonts embedded as payload, panel/main.js and plugin/visuals.js built, licenses copied`);

@@ -12,7 +12,7 @@ const version = JSON.parse(await readFile(path.join(ROOT, "package.json"), "utf8
 const outputDir = path.join(ROOT, "dist");
 const output = path.join(outputDir, `smolui-openchamber-${version}.zip`);
 
-const INCLUDE = ["package.json", "icon.svg", "panel", "service", "skill", "licenses", "README.md", "NOTICE.md"];
+const INCLUDE = ["package.json", "icon.svg", "panel", "service", "plugin", "skill", "licenses", "README.md", "NOTICE.md"];
 
 await mkdir(outputDir, { recursive: true });
 await rm(output, { force: true });

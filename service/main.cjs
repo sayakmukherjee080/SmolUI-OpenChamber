@@ -13,8 +13,11 @@ const os = require("node:os");
 const PORT = Number.parseInt(process.env.OPENCHAMBER_SERVICE_PORT ?? "", 10);
 const TOKEN = process.env.OPENCHAMBER_SERVICE_TOKEN ?? "";
 const PACKAGE_ROOT = path.resolve(__dirname, "..");
+const CONFIG_ROOT = path.join(os.homedir(), ".config", "opencode");
 const SKILL_SOURCE = path.join(PACKAGE_ROOT, "skill", "visuals");
-const SKILL_DESTINATION = path.join(os.homedir(), ".config", "opencode", "skills", "visuals");
+const SKILL_DESTINATION = path.join(CONFIG_ROOT, "skills", "visuals");
+const PLUGIN_SOURCE = path.join(PACKAGE_ROOT, "plugin", "visuals.js");
+const PLUGIN_DESTINATION = path.join(CONFIG_ROOT, "plugins", "visuals.js");
 const VERSION_MARKER = ".smolui-version";
 /** Package-relative paths the panel may read through this service. */
 const ASSET_PATH = /^skill\/visuals\/assets\/[A-Za-z0-9._/-]+$/;
@@ -33,6 +36,16 @@ function packageVersion() {
 /** The error's message, for a JSON answer. */
 function describe(error) {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Whether a path exists. */
+async function fileExists(target) {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** The version marker in the installed skill, or null when it is missing. */
@@ -66,9 +79,10 @@ async function readAssetChunk(relative, offset, length) {
 }
 
 /**
- * Copies the skill into the user's skills directory when it is missing or
- * from an older extension version. Staged next to the destination, then
- * renamed, so a reader never sees a half-written skill.
+ * Copies the skill into the user's skills directory and the `visuals` tool
+ * into the plugin directory when they are missing or from an older extension
+ * version. Both are staged next to their destination, then renamed, so a
+ * reader never sees a half-written file.
  */
 async function installSkill() {
   const version = packageVersion();
@@ -81,7 +95,11 @@ async function installSkill() {
   await fs.writeFile(path.join(staging, VERSION_MARKER), `${version}\n`, "utf8");
   await fs.rm(SKILL_DESTINATION, { recursive: true, force: true });
   await fs.rename(staging, SKILL_DESTINATION);
-  return { changed: true, version };
+  await fs.mkdir(path.dirname(PLUGIN_DESTINATION), { recursive: true });
+  const pluginStaging = `${PLUGIN_DESTINATION}.staging-${process.pid}`;
+  await fs.copyFile(PLUGIN_SOURCE, pluginStaging);
+  await fs.rename(pluginStaging, PLUGIN_DESTINATION);
+  return { changed: true, version, plugin: PLUGIN_DESTINATION };
 }
 
 const server = http.createServer(async (request, response) => {
@@ -112,6 +130,8 @@ const server = http.createServer(async (request, response) => {
         installedVersion: installed,
         packageVersion: packageVersion(),
         skillDir: SKILL_DESTINATION,
+        pluginInstalled: await fileExists(PLUGIN_DESTINATION),
+        pluginPath: PLUGIN_DESTINATION,
       });
     } catch (error) {
       return send(500, { error: describe(error) });

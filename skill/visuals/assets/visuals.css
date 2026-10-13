@@ -114,20 +114,30 @@
   --chart-donut-cutout: 66%;
   --chart-anim: 360ms;
 
-  /* three.js: scene colors follow the mode. Numbers are unitless. */
-  --three-bg: var(--surface-sunken);
-  --three-grid: var(--border-strong);
-  --three-grid-sub: var(--border);
-  --three-axis-x: var(--s3);
-  --three-axis-y: var(--s1);
-  --three-axis-z: var(--s4);
+  /* three.js: "Studio clay" stage. Colours follow the mode; numbers are unitless. */
+  --three-bg: #eeece7;
+  --three-grid: #d9d5cc;
+  --three-grid-sub: #e4e1da;
+  --three-axis-x: #c9694a;
+  --three-axis-y: #6f9a7a;
+  --three-axis-z: #6f8fb3;
   --three-label: var(--text-2);
-  --three-ambient: 0.65;
-  --three-key: 1.1;
-  --three-fill: 0.35;
-  --three-roughness: 0.55;
-  --three-metalness: 0.08;
-  --three-fov: 40;
+  --three-clay-1: #dcd8cf;
+  --three-clay-2: #cdc8bd;
+  --three-clay-3: #e9e6df;
+  --three-clay-4: #bdb7ab;
+  --three-accent: #d9623b;
+  --three-accent-soft: #f0b8a4;
+  --three-ambient: 0.9;
+  --three-key: 1.15;
+  --three-fill: 0.2;
+  --three-shadow: 0.22;
+  --three-roughness: 0.92;
+  --three-metalness: 0;
+  --three-fov: 38;
+  --three-grain: 0.35;
+  --three-env: 0.5;
+  --three-contact: 0.2;
 
   /* math (KaTeX) */
   --math-size: 1.05em;
@@ -276,6 +286,26 @@
     --syn-operator: #b6c5bb;
     --shadow-color: rgba(0, 0, 0, 0.55);
     --scrim: rgba(0, 0, 0, 0.6);
+    /* three.js "Studio clay", dark: warm charcoal stage, clay tints lifted, accent brighter */
+    --three-bg: #232220;
+    --three-grid: #3a3835;
+    --three-grid-sub: #2d2b29;
+    --three-axis-x: #e0825f;
+    --three-axis-y: #8fb89b;
+    --three-axis-z: #8fb0d3;
+    --three-clay-1: #c9c3b6;
+    --three-clay-2: #b4aea1;
+    --three-clay-3: #dad5c9;
+    --three-clay-4: #9a9488;
+    --three-accent: #ee7a52;
+    --three-accent-soft: #8a4a33;
+    --three-ambient: 0.62;
+    --three-key: 1;
+    --three-fill: 0.15;
+    --three-shadow: 0.55;
+    --three-grain: 0.3;
+    --three-env: 0.42;
+    --three-contact: 0.34;
   }
 }
 
@@ -346,6 +376,26 @@
   --syn-operator: #b6c5bb;
   --shadow-color: rgba(0, 0, 0, 0.55);
   --scrim: rgba(0, 0, 0, 0.6);
+  /* three.js "Studio clay", dark: warm charcoal stage, clay tints lifted, accent brighter */
+  --three-bg: #232220;
+  --three-grid: #3a3835;
+  --three-grid-sub: #2d2b29;
+  --three-axis-x: #e0825f;
+  --three-axis-y: #8fb89b;
+  --three-axis-z: #8fb0d3;
+  --three-clay-1: #c9c3b6;
+  --three-clay-2: #b4aea1;
+  --three-clay-3: #dad5c9;
+  --three-clay-4: #9a9488;
+  --three-accent: #ee7a52;
+  --three-accent-soft: #8a4a33;
+  --three-ambient: 0.62;
+  --three-key: 1;
+  --three-fill: 0.15;
+  --three-shadow: 0.55;
+  --three-grain: 0.3;
+  --three-env: 0.42;
+  --three-contact: 0.34;
 }
 
 @media print {
@@ -447,20 +497,30 @@
   --chart-donut-cutout: 66%;
   --chart-anim: 360ms;
 
-  /* three.js: scene colors follow the mode. Numbers are unitless. */
-  --three-bg: var(--surface-sunken);
-  --three-grid: var(--border-strong);
-  --three-grid-sub: var(--border);
-  --three-axis-x: var(--s3);
-  --three-axis-y: var(--s1);
-  --three-axis-z: var(--s4);
+  /* three.js: "Studio clay" stage. Colours follow the mode; numbers are unitless. */
+  --three-bg: #eeece7;
+  --three-grid: #d9d5cc;
+  --three-grid-sub: #e4e1da;
+  --three-axis-x: #c9694a;
+  --three-axis-y: #6f9a7a;
+  --three-axis-z: #6f8fb3;
   --three-label: var(--text-2);
-  --three-ambient: 0.65;
-  --three-key: 1.1;
-  --three-fill: 0.35;
-  --three-roughness: 0.55;
-  --three-metalness: 0.08;
-  --three-fov: 40;
+  --three-clay-1: #dcd8cf;
+  --three-clay-2: #cdc8bd;
+  --three-clay-3: #e9e6df;
+  --three-clay-4: #bdb7ab;
+  --three-accent: #d9623b;
+  --three-accent-soft: #f0b8a4;
+  --three-ambient: 0.9;
+  --three-key: 1.15;
+  --three-fill: 0.2;
+  --three-shadow: 0.22;
+  --three-roughness: 0.92;
+  --three-metalness: 0;
+  --three-fov: 38;
+  --three-grain: 0.35;
+  --three-env: 0.5;
+  --three-contact: 0.2;
 
   /* math (KaTeX) */
   --math-size: 1.05em;
@@ -837,6 +897,12 @@ pre .line.hl { background: color-mix(in srgb, var(--accent) 14%, transparent); b
 .legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin: 0 0 var(--space-3); padding: 0; list-style: none; font-size: var(--text-sm); color: var(--text-2); }
 .legend > * { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
 .legend > *::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--c, var(--s1)); }
+/* clay swatches for Studio clay scenes: <span class="k-clay">Housing</span> */
+.legend > .k-clay::before { background: var(--three-clay-1); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.legend > .k-clay-2::before { background: var(--three-clay-2); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.legend > .k-clay-3::before { background: var(--three-clay-3); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.legend > .k-clay-4::before { background: var(--three-clay-4); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.legend > .k-accent::before { background: var(--three-accent); }
 
 /* ---------- bar rows (HTML bar chart without a library) ---------- */
 .bars { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -1016,13 +1082,13 @@ tr.selected > :is(th, td):not([class*="seq-"], [class*="div-"]) { background: va
 .math-note { color: var(--text-muted); font-size: var(--text-sm); }
 
 /* ---------- 3d scene (Three.js) ---------- */
-.scene { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; background: var(--surface-sunken); border: 1px solid var(--border); border-radius: var(--radius-lg); touch-action: none; margin: 0 0 var(--space-4); }
+.scene { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; background: var(--three-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); touch-action: none; margin: 0 0 var(--space-4); }
 .scene > canvas { display: block; width: 100%; height: 100%; max-width: none; border-radius: 0; margin: 0; }
 .scene.square { aspect-ratio: 1; }
 .scene.wide { aspect-ratio: 16 / 9; }
 .scene > .hud { position: absolute; top: var(--space-3); left: var(--space-3); font-size: var(--text-xs); color: var(--text-muted); pointer-events: none; }
 .scene > .controls { position: absolute; right: var(--space-3); bottom: var(--space-3); display: flex; gap: var(--space-1); }
-.scene-label { padding: 1px 6px; background: var(--chart-tooltip-bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--text-xs); pointer-events: none; }
+.scene-label { position: absolute; padding: 1px 6px; background: var(--chart-tooltip-bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--text-xs); white-space: nowrap; pointer-events: none; }
 
 /* ---------- more layout helpers ---------- */
 .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }

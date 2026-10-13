@@ -69,6 +69,10 @@ try {
   assert.ok((await stat(path.join(skillDir, "SKILL.md"))).isFile(), "SKILL.md installed");
   assert.ok((await stat(path.join(skillDir, "assets", "visuals.css"))).isFile(), "skill assets installed");
   assert.ok((await stat(path.join(skillDir, "scripts", "assemble.mjs"))).isFile(), "skill scripts installed");
+  assert.ok(
+    (await stat(path.join(home, ".config", "opencode", "plugins", "visuals.js"))).isFile(),
+    "the visuals tool is installed for OpenCode",
+  );
   assert.equal((await readFile(path.join(skillDir, ".smolui-version"), "utf8")).trim(), VERSION);
 
   const again = await call("POST", "/setup/install");
@@ -78,6 +82,7 @@ try {
   const after = await call("GET", "/setup/status");
   assert.equal(after.body.installed, true);
   assert.equal(after.body.installedVersion, VERSION);
+  assert.equal(after.body.pluginInstalled, true, "status reports the plugin");
 
   const unknown = await call("GET", "/nope");
   assert.equal(unknown.status, 404);

@@ -15,10 +15,9 @@ Turn a request for a visual into one self-contained, themed HTML fragment at `.v
 2. **Get real data.** Every number must come from a command, file or query you ran in this session. Compute aggregates in code, not in your head. If you cannot get the data, say so; never invent it. If the query returns nothing, say that in chat instead of drawing an empty chart. If the user asks for an example or mock-up, label it "Illustrative" in the caption.
 3. **Copy the closest file from `examples/`**, keep its structure, replace the content.
 4. **Write** `.visuals/<slug>.visual.html` (create the folder if needed; kebab-case slug, 40 characters or fewer). To change an existing visual, edit the same file; do not create a new slug.
-5. **Lint:** `node <skill-dir>/scripts/lint.mjs .visuals/<slug>.visual.html`. Fix every ERROR and read every warning. Do not report done until it prints `OK: 0 errors`. If Node is unavailable, say the lint was not run.
-6. **Build the download (always).** `node <skill-dir>/scripts/assemble.mjs .visuals/<slug>.visual.html` writes `.visuals/<slug>.html`: one self-contained file (styles, fonts, libraries all inside, works offline, follows the viewer's light/dark setting). This is the file the user downloads and shares, so build it after every change. It lints again and refuses on errors. Never edit that file by hand.
-7. **Optional dark check:** `node <skill-dir>/scripts/assemble.mjs .visuals/<slug>.visual.html --theme dark --out .visuals/.build/<slug>-dark.html` and open the result.
-8. **Reply with one line:** the takeaway in one sentence, then the two paths: the fragment and the download, then where to open it — "open it from the SmolUI panel, or ⋯ → Open as visualization on this message". Never paste HTML into the chat. If `.gitignore` does not list `.visuals/`, mention it once; do not edit it.
+5. **Check and build.** Call the `smolui_visuals` tool with the fragment path (`file: ".visuals/<slug>.visual.html"`). It lints the fragment and builds the download in one call, and returns the download path, its size and the libraries. Fix every error it reports and call it again until it passes. Without the tool (a standalone skill install), run `node <skill-dir>/scripts/lint.mjs <fragment>` and then `node <skill-dir>/scripts/assemble.mjs <fragment>` yourself; the lint must print `OK: 0 errors`. The download is `.visuals/<slug>.html`: one self-contained file (styles, fonts and libraries inside, works offline, follows the viewer's light/dark setting). Build it after every change, and never edit it by hand.
+6. **Optional dark check:** `node <skill-dir>/scripts/assemble.mjs .visuals/<slug>.visual.html --theme dark --out .visuals/.build/<slug>-dark.html` and open the result.
+7. **Reply with one line:** the takeaway in one sentence, then the two paths: the fragment and the download, then where to open it: "open it from the SmolUI panel, or ⋯ → Open as visualization on this message". Never paste HTML into the chat. If `.gitignore` does not list `.visuals/`, mention it once; do not edit it.
 
 ## Which tool
 
@@ -28,13 +27,13 @@ Turn a request for a visual into one self-contained, themed HTML fragment at `.v
 | Trend, comparison, share, distribution (line, bar, doughnut, scatter, radar) | Chart.js (`libs: chart`) | `references/charts.md` |
 | Heatmap, treemap, network, histogram, small multiples, custom scales | D3 (`libs: d3`) | `references/d3.md` |
 | Flow, architecture, sequence, state, ER, schedule, timeline, mind map | Mermaid (`libs: mermaid`) | `references/diagrams.md` |
-| How a mechanism or machine works: gears, escapement, engine, moving parts | Motion first: animated SVG (no library) or Three.js (`libs: three`); label illustrative geometry | `references/motion.md` |
-| Spatial structure, 3D surface or bars | Three.js (`libs: three`) | `references/three.md` |
+| How a mechanism or machine works: gears, escapement, engine, moving parts | Motion first: animated SVG (no library) or Three.js (`libs: three`, Studio clay); label illustrative geometry | `references/motion.md`, `references/three.md` |
+| Layouts, structures and machines: cities, floor plans, routes, org maps, parts lying flat | Three.js (`libs: three`), Studio clay with `up: "z"` | `references/three.md` |
 | Route, places, geography | Schematic SVG map, or a D3 vector map with an embedded GeoJSON extract (no tiles) | `references/maps.md` |
 | Formula, derivation, worked example | KaTeX (`libs: katex`) | `references/math.md` |
 | What-if with sliders | Chart.js or plain HTML plus a short script | `references/charts.md` |
 
-Use the simplest tool that works: HTML before Chart.js, Chart.js before D3. Pie charts are Chart.js doughnuts, never Mermaid. 3D only when the data is truly spatial. A mechanism with moving parts is temporal or spatial: animate it instead of drawing a static flowchart. Libraries are already loaded as globals once declared in the manifest. Nothing else exists: no CDN, no other libraries.
+Use the simplest tool that works: HTML before Chart.js, Chart.js before D3. Pie charts are Chart.js doughnuts, never Mermaid. 3D is for layouts, structures and mechanisms, always in Studio clay (clay tints for parts, one accent for the point of the title), never for ordinary bar or line data. A mechanism with moving parts is temporal or spatial: animate it instead of drawing a static flowchart. Libraries are already loaded as globals once declared in the manifest. Nothing else exists: no CDN, no other libraries.
 
 ## The fragment
 
@@ -91,11 +90,11 @@ Allowed: tabs, toggles, filters, sliders, hover tooltips, expand/collapse, theme
 - `references/charts.md` - Chart.js recipes and rules
 - `references/d3.md` - D3 helpers and recipes
 - `references/diagrams.md` - Mermaid types, direction, node classes, size limits
-- `references/three.md` - 3D scene bootstrap
+- `references/three.md` - the Studio clay 3D stage: tints, accent, labels, exploded views
 - `references/motion.md` - animation, reduced motion, guided tours, exploded views
 - `references/maps.md` - schematic and vector maps without tiles
 - `references/media.md` - photos as data URIs, the chat gallery, what never loads
 - `references/math.md` - KaTeX markup and macros
 - `references/tokens.md` - every design token by name
 - `references/shell.md` - what a host must provide (for people building the panel, not for you)
-- `examples/` - eleven linted, rendered, working visuals: `01-kpi-table`, `02-line-chart`, `03-bar-compare`, `04-flow`, `05-architecture`, `06-scene-3d`, `07-formula`, `08-what-if`, `09-heatmap-d3`, `10-share-tabs` (doughnut with tabs and a data table), `11-route-map` (schematic route with filter chips and related queries)
+- `examples/` - twelve linted, rendered, working visuals: `01-kpi-table`, `02-line-chart`, `03-bar-compare`, `04-flow`, `05-architecture`, `06-scene-3d` (clay bars with a matching legend), `07-formula`, `08-what-if`, `09-heatmap-d3`, `10-share-tabs` (doughnut with tabs and a data table), `11-route-map` (schematic route with filter chips and related queries), `12-clay-parts` (a clay gear train with labels, one accent and motion)

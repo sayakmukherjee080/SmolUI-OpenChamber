@@ -12,7 +12,7 @@
 (function (root) {
   "use strict";
   var doc = root.document;
-  var VERSION = "1.2.0";
+  var VERSION = "1.3.0";
 
   // ---------------------------------------------------------------- token reading
   var COLORS = [
@@ -26,12 +26,14 @@
     "div-neg-2", "div-neg-1", "div-mid", "div-pos-1", "div-pos-2",
     "chart-grid", "chart-axis", "chart-label", "chart-crosshair", "chart-tooltip-bg", "chart-tooltip-border",
     "syn-comment", "syn-keyword", "syn-string", "syn-number", "syn-function", "syn-type", "syn-tag", "syn-attr", "syn-operator",
-    "three-bg", "three-grid", "three-grid-sub", "three-axis-x", "three-axis-y", "three-axis-z", "three-label"
+    "three-bg", "three-grid", "three-grid-sub", "three-axis-x", "three-axis-y", "three-axis-z", "three-label",
+    "three-clay-1", "three-clay-2", "three-clay-3", "three-clay-4", "three-accent", "three-accent-soft"
   ];
   var NUMBERS = [
     "chart-area-alpha", "chart-line-width", "chart-point-radius", "chart-bar-radius", "chart-font-size",
     "chart-tension", "chart-legend-box", "chart-padding", "chart-bar-max", "chart-anim",
-    "three-ambient", "three-key", "three-fill", "three-roughness", "three-metalness", "three-fov",
+    "three-ambient", "three-key", "three-fill", "three-roughness", "three-metalness", "three-fov", "three-shadow",
+    "three-grain", "three-env", "three-contact",
     "radius", "radius-sm", "radius-lg", "text-xs", "text-sm", "text-base"
   ];
   var cache = null, signature = "", listeners = [], warnedMissing = false, warnedOther = false;
@@ -324,24 +326,176 @@
       var v = typeof key === "number" ? series(key) : (t.color[key] || key);
       return new THREE.Color(v);
     }
-    function track(obj, key, kind) { tracked.push({ obj: obj, key: key, kind: kind }); return obj; }
-
+    /** A token name, a series index, or a function of the tokens (for derived mixes). */
+    function value(key) {
+      if (typeof key === "function") return key(tokens());
+      var t = tokens();
+      return typeof key === "number" ? series(key) : (t.color[key] || key);
+    }
+    function track(obj, key, opts) {
+      tracked.push({ obj: obj, key: key, emissive: !!(opts && opts.emissive) });
+      return obj;
+    }
     function recolor() {
       tracked.forEach(function (r) {
-        if (r.kind === "material") r.obj.color.copy(color(r.key));
+        r.obj.color.copy(new THREE.Color(value(r.key)));
+        if (r.emissive && r.obj.emissive) r.obj.emissive.copy(new THREE.Color(value(r.key)));
+        if (r.obj.envMapIntensity !== undefined) r.obj.envMapIntensity = tokens().num["three-env"];
       });
       created.forEach(function (s) { s._retheme(); });
     }
     onTheme(recolor);
 
+    // ---- procedural surfaces: no files, everything is drawn on a canvas
+    var surfaces = {};
+    function canvas2d(size) {
+      if (!doc.createElement) return null;
+      var el = doc.createElement("canvas");
+      el.width = el.height = size;
+      return el.getContext ? el.getContext("2d") : null;
+    }
+    function surface(name, size, draw) {
+      if (surfaces[name]) return surfaces[name];
+      var ctx = canvas2d(size);
+      if (!ctx) return null;
+      draw(ctx, size);
+      var tex = new THREE.CanvasTexture(ctx.canvas);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      surfaces[name] = tex;
+      return tex;
+    }
+    /** Greyscale mottling for bump maps, at a per-part repeat. */
+    function grainTexture(repeat) {
+      var key = "grain" + repeat;
+      if (surfaces[key]) return surfaces[key];
+      var ctx = canvas2d(256);
+      if (!ctx) return null;
+      var size = 256, seed = 7, image = ctx.createImageData(size, size);
+      function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+      for (var i = 0; i < size * size; i += 1) {
+        var v = 118 + rnd() * 137;
+        image.data[i * 4] = image.data[i * 4 + 1] = image.data[i * 4 + 2] = v;
+        image.data[i * 4 + 3] = 255;
+      }
+      ctx.putImageData(image, 0, 0);
+      ctx.globalAlpha = 0.45;
+      ctx.drawImage(ctx.canvas, -1, 0); ctx.drawImage(ctx.canvas, 1, 0);
+      ctx.drawImage(ctx.canvas, 0, -1); ctx.drawImage(ctx.canvas, 0, 1);
+      ctx.globalAlpha = 1;
+      var tex = new THREE.CanvasTexture(ctx.canvas);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(repeat, repeat);
+      surfaces[key] = tex;
+      return tex;
+    }
+    /** Wound-wire stripes for coils and bobbins. */
+    function coilTexture() {
+      var tex = surface("coil", 128, function (ctx, size) {
+        for (var x = 0; x < size; x += 8) {
+          var grad = ctx.createLinearGradient(x, 0, x + 8, 0);
+          grad.addColorStop(0, "#6f6f6f");
+          grad.addColorStop(0.45, "#ffffff");
+          grad.addColorStop(0.55, "#cfcfcf");
+          grad.addColorStop(1, "#6a6a6a");
+          ctx.fillStyle = grad;
+          ctx.fillRect(x, 0, 8, size);
+        }
+      });
+      if (tex && !tex.userData.vSet) { tex.repeat.set(6, 1); tex.userData.vSet = true; }
+      return tex;
+    }
+    /** A faint board grid: traces and pads. */
+    function boardTexture() {
+      var tex = surface("board", 128, function (ctx, size) {
+        ctx.fillStyle = "#b8b8b8";
+        ctx.fillRect(0, 0, size, size);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2;
+        for (var p = 8; p < size; p += 16) {
+          ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, size); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(size, p); ctx.stroke();
+        }
+        ctx.strokeStyle = "#909090";
+        ctx.lineWidth = 3;
+        for (var q = 24; q < size; q += 32) {
+          ctx.beginPath(); ctx.moveTo(q, 0); ctx.lineTo(q, size); ctx.stroke();
+        }
+      });
+      if (tex && !tex.userData.vSet) { tex.repeat.set(2, 2); tex.userData.vSet = true; }
+      return tex;
+    }
+    /** A soft dark blob that grounds a part on the floor. */
+    function contactTexture() {
+      return surface("contact", 128, function (ctx, size) {
+        var half = size / 2;
+        var grad = ctx.createRadialGradient(half, half, 0, half, half, half);
+        grad.addColorStop(0, "rgba(0, 0, 0, 0.85)");
+        grad.addColorStop(0.55, "rgba(0, 0, 0, 0.35)");
+        grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, size, size);
+      });
+    }
+    /** The stage sky: a token-tinted gradient turned into an environment map. */
+    function environment(renderer) {
+      if (!THREE.PMREMGenerator || !renderer || !renderer.getRenderTarget) return null;
+      var ctx = canvas2d(64);
+      if (!ctx) return null;
+      var t = tokens();
+      var grad = ctx.createLinearGradient(0, 0, 0, 64);
+      grad.addColorStop(0, mix(t.color["three-bg"], "#ffffff", 0.5));
+      grad.addColorStop(0.5, t.color["three-bg"]);
+      grad.addColorStop(1, mix(t.color["three-bg"], "#000000", 0.4));
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 64, 64);
+      var source = new THREE.CanvasTexture(ctx.canvas);
+      source.mapping = THREE.EquirectangularReflectionMapping;
+      var pmrem = new THREE.PMREMGenerator(renderer);
+      var target = pmrem.fromEquirectangular(source);
+      source.dispose();
+      pmrem.dispose();
+      return target;
+    }
+    /** The soft blob that grounds a part: dark, fading, drawn from the stage colour. */
+    function contactMaterial() {
+      var m = new THREE.MeshBasicMaterial({
+        map: contactTexture(),
+        transparent: true,
+        opacity: tokens().num["three-contact"],
+        depthWrite: false
+      });
+      var key = function (t) { return mix(t.color["three-bg"], "#000000", 0.55); };
+      m.color = new THREE.Color(value(key));
+      track(m, key, "material");
+      return m;
+    }
+    /** The one standard material: token colour, matte, environment-lit, grain-bumped. */
+    function standard(key, opts, textured) {
+      var t = tokens(), o = opts || {};
+      var config = {
+        color: color(key),
+        roughness: t.num["three-roughness"],
+        metalness: t.num["three-metalness"],
+        envMapIntensity: t.num["three-env"]
+      };
+      var grain = t.num["three-grain"];
+      if (o.color === undefined && !o.bumpMap && grain > 0) {
+        var tex = textured === "coil" ? coilTexture() : textured === "board" ? boardTexture() : grainTexture(o.repeat === undefined ? 2 : o.repeat);
+        if (tex) {
+          config.bumpMap = tex;
+          config.bumpScale = (textured === "coil" ? 0.09 : textured === "board" ? 0.05 : 0.02) * grain;
+        }
+      }
+      var m = new THREE.MeshStandardMaterial(Object.assign(config, o));
+      if (o.color === undefined) track(m, key, "material");
+      return m;
+    }
+
     var api = {
       color: color,
-      /** Standard (lit) material in a series or token color, following the theme. */
+      /** Standard (lit) material in a series or token colour, following the theme. */
       material: function (key, opts) {
-        var t = tokens(), o = opts || {};
-        var m = new THREE.MeshStandardMaterial(Object.assign({ color: color(key), roughness: t.num["three-roughness"], metalness: t.num["three-metalness"] }, o));
-        if (o.color === undefined) track(m, key, "material");
-        return m;
+        return standard(key, opts);
       },
       /** Flat unlit material, good for wireframes and 2D-looking shapes. */
       basic: function (key, opts) {
@@ -354,15 +508,158 @@
         if (!opts || opts.color === undefined) track(m, key, "material");
         return m;
       },
-      /** Ambient + key + fill lights from the tokens. */
-      lights: function (scene) {
-        var t = tokens(), N = t.num, group = new THREE.Group();
+      /**
+       * A matte clay material in one of four neutral tints. Order tints by role, not
+       * decoration: th.clay(0) base and housing, th.clay(1) fixed hardware, th.clay(2)
+       * moving parts, th.clay(3) small details. Tints separate parts; they rank nothing.
+       */
+      clay: function (i, opts) {
+        return standard("three-clay-" + (Math.min(3, Math.max(0, Math.round(i || 0))) + 1), opts);
+      },
+      /** The single terracotta accent: the part the title is about, and nothing else. */
+      accent: function (opts) {
+        return standard("three-accent", opts);
+      },
+      /** Emissive light: beams, lamps, indicators. */
+      light: function (opts) {
+        var o = opts || {};
+        var m = new THREE.MeshStandardMaterial({
+          color: color("three-accent"),
+          emissive: color("three-accent"),
+          emissiveIntensity: o.emissiveIntensity === undefined ? 0.9 : o.emissiveIntensity,
+          roughness: 1,
+          metalness: 0
+        });
+        if (o.color === undefined) track(m, "three-accent", { emissive: true });
+        return m;
+      },
+      /** A soft additive halo to wrap around a light: the poor man's bloom. */
+      glow: function (geometry, opts) {
+        var o = opts || {};
+        var m = new THREE.MeshBasicMaterial({
+          color: color("three-accent"),
+          transparent: true,
+          opacity: o.opacity === undefined ? 0.2 : o.opacity,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+        if (o.color === undefined) track(m, "three-accent", "material");
+        var mesh = new THREE.Mesh(geometry, m);
+        mesh.userData.vNoShadow = true;
+        return mesh;
+      },
+      /** Glass: lenses, windows, tubes. Stylised, not a refraction pass. */
+      glass: function (opts) {
+        var o = opts || {};
+        var key = function (t) { return mix(t.color["three-bg"], "#ffffff", 0.5); };
+        var m = new THREE.MeshStandardMaterial({
+          roughness: 0.15,
+          metalness: 0,
+          transparent: true,
+          opacity: o.opacity === undefined ? 0.28 : o.opacity,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          envMapIntensity: tokens().num["three-env"] * 1.4
+        });
+        m.color = new THREE.Color(value(key));
+        track(m, key, "material");
+        return m;
+      },
+      /** Wound wire: a striped bump over a clay tint. */
+      coil: function (i, opts) {
+        return standard("three-clay-" + (Math.min(3, Math.max(0, Math.round(i || 0))) + 1), opts, "coil");
+      },
+      /** A board: a faint grid of traces. */
+      board: function (i, opts) {
+        return standard("three-clay-" + (Math.min(3, Math.max(0, Math.round(i || 0))) + 1), opts, "board");
+      },
+      /** A tube between two points, for leads and pipes. */
+      wire: function (from, to, radius, tint) {
+        var a = new THREE.Vector3(from[0], from[1], from[2]);
+        var b = new THREE.Vector3(to[0], to[1], to[2]);
+        var dir = new THREE.Vector3().subVectors(b, a);
+        var mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius || 0.06, radius || 0.06, dir.length(), 20), api.clay(tint === undefined ? 3 : tint));
+        mesh.position.copy(a).addScaledVector(dir, 0.5);
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+        return mesh;
+      },
+      /** A ring of recessed hole discs for a wheel or plate, lying in the part's own face. */
+      holes: function (count, opts) {
+        var o = opts || {};
+        var group = new THREE.Group();
+        var ring = o.ring === undefined ? 0.5 : o.ring;
+        var size = o.size === undefined ? 0.14 : o.size;
+        var material = api.clay(o.tint === undefined ? 3 : o.tint);
+        for (var i = 0; i < count; i += 1) {
+          var angle = (i / count) * Math.PI * 2 + (o.offset || 0);
+          var mesh = new THREE.Mesh(new THREE.CylinderGeometry(size, size, 0.02, 24), material);
+          mesh.rotation.x = Math.PI / 2;
+          mesh.position.set(Math.cos(angle) * ring, Math.sin(angle) * ring, 0.012);
+          mesh.userData.vNoShadow = true;
+          group.add(mesh);
+        }
+        return group;
+      },
+      /** A ring of hex bolt heads for a flange. */
+      boltRing: function (radius, count, opts) {
+        var o = opts || {};
+        var group = new THREE.Group();
+        var size = o.size === undefined ? 0.07 : o.size;
+        var material = api.clay(o.tint === undefined ? 3 : o.tint);
+        for (var i = 0; i < count; i += 1) {
+          var angle = (i / count) * Math.PI * 2;
+          var mesh = new THREE.Mesh(new THREE.CylinderGeometry(size, size, 0.06, 6), material);
+          mesh.rotation.x = Math.PI / 2;
+          mesh.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0.03);
+          group.add(mesh);
+        }
+        return group;
+      },
+      /**
+       * Ambient, a shadow-casting key light and a fill. Positions suit the scene's up
+       * axis; shadowSize is the half-width of the shadowed area and shadowIntensity
+       * comes from --three-shadow.
+       */
+      lights: function (scene, opts) {
+        var t = tokens(), N = t.num, o = opts || {};
+        var zUp = o.up === "z";
+        var group = new THREE.Group();
         group.name = "visuals-lights";
-        group.add(new THREE.AmbientLight(0xffffff, N["three-ambient"]));
-        var key = new THREE.DirectionalLight(0xffffff, N["three-key"]); key.position.set(5, 8, 6); group.add(key);
-        var fill = new THREE.DirectionalLight(0xffffff, N["three-fill"]); fill.position.set(-6, 2, -4); group.add(fill);
+        group.add(new THREE.AmbientLight(0xffffff, o.ambient === undefined ? N["three-ambient"] : o.ambient));
+        var key = new THREE.DirectionalLight(0xffffff, o.key === undefined ? N["three-key"] : o.key);
+        if (zUp) key.position.set(6, -5, 9); else key.position.set(6, 9, 7);
+        key.castShadow = o.shadows !== false;
+        if (key.castShadow) {
+          var size = o.shadowSize === undefined ? 10 : o.shadowSize;
+          key.shadow.mapSize.set(2048, 2048);
+          key.shadow.camera.left = -size;
+          key.shadow.camera.right = size;
+          key.shadow.camera.top = size;
+          key.shadow.camera.bottom = -size;
+          key.shadow.camera.near = 1;
+          key.shadow.camera.far = 60;
+          key.shadow.bias = -0.0004;
+          key.shadow.normalBias = 0.02;
+          key.shadow.radius = o.radius === undefined ? 4 : o.radius;
+          if ("blurSamples" in key.shadow) key.shadow.blurSamples = 8;
+          if ("intensity" in key.shadow) key.shadow.intensity = o.shadowIntensity === undefined ? N["three-shadow"] : o.shadowIntensity;
+        }
+        group.add(key);
+        var fill = new THREE.DirectionalLight(0xffffff, o.fill === undefined ? N["three-fill"] : o.fill);
+        if (zUp) fill.position.set(-7, 6, 3); else fill.position.set(-7, 4, -5);
+        group.add(fill);
         if (scene) scene.add(group);
         return group;
+      },
+      /**
+       * Where a world point sits in the container, in pixels, so a .hud label
+       * can be placed over it. Call it after the camera moves.
+       */
+      project: function (handle, point) {
+        var v = new THREE.Vector3(point.x, point.y, point.z).project(handle.camera);
+        var w = handle.host ? handle.host.clientWidth || 300 : 300;
+        var h = handle.host ? handle.host.clientHeight || 225 : 225;
+        return { x: (v.x * 0.5 + 0.5) * w, y: (-v.y * 0.5 + 0.5) * h };
       },
       grid: function (size, divisions) {
         var g = new THREE.GridHelper(size || 10, divisions || 10, color("three-grid"), color("three-grid-sub"));
@@ -380,57 +677,146 @@
         return g;
       },
       /**
-       * Scene bootstrap. container is a .scene element. Returns { scene, camera, renderer, controls, onFrame, dispose }.
-       * Pass OrbitControls (from three/addons) to enable drag to orbit.
+       * Scene bootstrap for the Studio clay stage. container is a .scene element.
+       * Returns { scene, camera, renderer, controls, host, add, contact, reset, onFrame,
+       * start, stop, render, dispose }. Pass OrbitControls (from three/addons) for drag
+       * to orbit. Options: position [x, y, z], target [x, y, z]; fov, from --three-fov;
+       * up "z" for subjects lying flat on the floor (gears, parts); orbit "studio" keeps
+       * the old floor-level 15-75 view (free is the default: anywhere but the poles);
+       * minDistance, maxDistance; shadowSize, the half-width of the shadowed area
+       * (default 10); ground: false drops the shadow floor (it hides itself when the
+       * camera goes under it); environment: false drops the stage sky; lights: false
+       * brings your own; grid, gridSize, gridDivisions; axes; shadows (default true);
+       * autoStart, to run the frame loop from the start.
        */
       create: function (opts) {
         var o = opts || {};
         var host = typeof o.container === "string" ? doc.querySelector(o.container) : o.container;
-        var t = tokens();
+        var t = tokens(), N = t.num;
+        var zUp = o.up === "z";
+        var shadowSize = o.shadowSize === undefined ? 10 : o.shadowSize;
         var scene = new THREE.Scene();
-        scene.background = color("three-bg");
-        var camera = new THREE.PerspectiveCamera(o.fov || t.num["three-fov"] || 40, 1, 0.1, 1000);
-        var p = o.position || [6, 5, 8]; camera.position.set(p[0], p[1], p[2]); camera.lookAt(0, 0, 0);
+        var backgroundKey = o.background || "three-bg";
+        scene.background = color(backgroundKey);
+        var target = o.target || [0, 0, 0];
+        var camera = new THREE.PerspectiveCamera(o.fov || N["three-fov"] || 38, 1, 0.1, 1000);
+        camera.up.set(0, zUp ? 0 : 1, zUp ? 1 : 0);
+        var position = o.position || (zUp ? [7, -8, 9] : [7, 6, 9]);
+        camera.position.set(position[0], position[1], position[2]);
+        camera.lookAt(target[0], target[1], target[2]);
         var renderer = o.renderer || new THREE.WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(Math.min(root.devicePixelRatio || 1, 2));
+        if (renderer.shadowMap && o.shadows !== false) {
+          renderer.shadowMap.enabled = true;
+          renderer.shadowMap.type = THREE.VSMShadowMap !== undefined ? THREE.VSMShadowMap : THREE.PCFShadowMap;
+        }
         if (host && renderer.domElement && !renderer.domElement.parentNode) host.appendChild(renderer.domElement);
         var controls = null;
         if (o.OrbitControls && renderer.domElement) {
           controls = new o.OrbitControls(camera, renderer.domElement);
           controls.enableDamping = true;
+          controls.target.set(target[0], target[1], target[2]);
+          // Free by default: the camera may go anywhere but the two poles, where
+          // OrbitControls gimbals. orbit: "studio" keeps the old floor-level 15-75 view.
+          var studio = o.orbit === "studio";
+          controls.minPolarAngle = (o.minPolarAngle === undefined ? (studio ? 15 : 2) : o.minPolarAngle) * Math.PI / 180;
+          controls.maxPolarAngle = (o.maxPolarAngle === undefined ? (studio ? 75 : 178) : o.maxPolarAngle) * Math.PI / 180;
+          controls.minDistance = o.minDistance === undefined ? 2.5 : o.minDistance;
+          controls.maxDistance = o.maxDistance === undefined ? 45 : o.maxDistance;
+          controls.update();
         }
-        if (o.lights !== false) api.lights(scene);
-        var gridObj = null, axesObj = null;
+        var gridObj = null, axesObj = null, lightGroup = null, ground = null, envTarget = null;
         function build() {
           if (gridObj) { scene.remove(gridObj); gridObj.geometry.dispose(); gridObj.material.dispose(); gridObj = null; }
           if (axesObj) { scene.remove(axesObj); axesObj.children.forEach(function (c) { c.geometry.dispose(); c.material.dispose(); }); axesObj = null; }
-          if (o.grid !== false) { gridObj = api.grid(o.gridSize, o.gridDivisions); scene.add(gridObj); }
+          if (lightGroup) { scene.remove(lightGroup); lightGroup = null; }
+          if (ground) { scene.remove(ground); ground.geometry.dispose(); ground.material.dispose(); ground = null; }
+          if (envTarget) { envTarget.dispose(); envTarget = null; }
+          if (o.lights !== false) lightGroup = api.lights(scene, { up: zUp ? "z" : "y", shadowSize: shadowSize, shadows: o.shadows !== false });
+          envTarget = o.environment === false ? null : environment(renderer);
+          scene.environment = envTarget ? envTarget.texture : null;
+          if (o.ground !== false) {
+            ground = new THREE.Mesh(new THREE.PlaneGeometry(shadowSize * 2, shadowSize * 2), new THREE.ShadowMaterial({ opacity: N["three-shadow"] }));
+            ground.name = "visuals-ground";
+            ground.receiveShadow = true;
+            ground.material.side = THREE.DoubleSide;
+            if (!zUp) ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+          }
+          if (o.grid === true) { gridObj = api.grid(o.gridSize, o.gridDivisions); if (zUp) gridObj.rotation.x = Math.PI / 2; scene.add(gridObj); }
           if (o.axes) { axesObj = api.axes(o.axes === true ? 5 : o.axes); scene.add(axesObj); }
+          groundVisible();
+        }
+        /** The floor only shows while the camera is above it; underneath, the model floats free. */
+        function groundVisible() {
+          if (!ground) return;
+          ground.visible = zUp ? camera.position.z >= 0 : camera.position.y >= 0;
         }
         build();
-        var frameFns = [], raf = 0, running = false, ro = null;
+        var frameFns = [], raf = 0, pending = 0, running = false, ro = null;
         function size() {
           if (!host) return;
           var w = host.clientWidth || 300, h = host.clientHeight || 225;
           renderer.setSize(w, h, false);
-          camera.aspect = w / h; camera.updateProjectionMatrix();
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
         }
-        function tick() {
+        function frame() {
           if (!running) return;
-          raf = root.requestAnimationFrame(tick);
+          raf = root.requestAnimationFrame(frame);
           if (controls) controls.update();
+          groundVisible();
           frameFns.forEach(function (fn) { fn(); });
           renderer.render(scene, camera);
         }
+        function schedule() {
+          if (running || pending || !root.requestAnimationFrame) return;
+          pending = root.requestAnimationFrame(function () { pending = 0; renderer.render(scene, camera); });
+        }
+        var homePosition = camera.position.clone();
+        var homeTarget = new THREE.Vector3(target[0], target[1], target[2]);
         var handle = {
-          scene: scene, camera: camera, renderer: renderer, controls: controls,
+          scene: scene, camera: camera, renderer: renderer, controls: controls, host: host,
+          /** Adds an object to the scene and turns on its soft shadows. */
+          add: function (obj) {
+            obj.traverse(function (child) {
+              if (!child.isMesh || child.userData.vNoShadow) return;
+              child.castShadow = true;
+              child.receiveShadow = true;
+            });
+            scene.add(obj);
+            schedule();
+            return obj;
+          },
+          /** A soft contact shadow on the floor under a part, in floor coordinates. */
+          contact: function (x, y, radius) {
+            var size = (radius === undefined ? 1 : radius) * 2;
+            var mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), contactMaterial());
+            mesh.userData.vNoShadow = true;
+            mesh.name = "visuals-contact";
+            if (zUp) mesh.position.set(x, y, 0.012);
+            else { mesh.rotation.x = -Math.PI / 2; mesh.position.set(x, 0.012, y); }
+            scene.add(mesh);
+            schedule();
+            return mesh;
+          },
+          /** Back to the framing the fragment chose. */
+          reset: function () {
+            camera.position.copy(homePosition);
+            if (controls) { controls.target.copy(homeTarget); controls.update(); }
+            else { camera.lookAt(homeTarget); }
+            groundVisible();
+            handle.render();
+          },
           onFrame: function (fn) { frameFns.push(fn); },
-          start: function () { if (!running) { running = true; tick(); } },
+          start: function () { if (!running) { running = true; frame(); } },
           stop: function () { running = false; if (raf) root.cancelAnimationFrame(raf); },
           render: function () { renderer.render(scene, camera); },
-          _retheme: function () { scene.background = color("three-bg"); build(); if (!running) handle.render(); },
+          _retheme: function () { scene.background = color(backgroundKey); build(); if (!running) handle.render(); },
           dispose: function () {
             handle.stop();
+            if (pending) root.cancelAnimationFrame(pending);
+            if (envTarget) envTarget.dispose();
             if (ro) ro.disconnect();
             if (controls && controls.dispose) controls.dispose();
             created.splice(created.indexOf(handle), 1);
@@ -441,7 +827,7 @@
         created.push(handle);
         size();
         if (root.ResizeObserver && host) { ro = new root.ResizeObserver(function () { size(); if (!running) handle.render(); }); ro.observe(host); }
-        if (o.autoStart !== false && root.requestAnimationFrame) handle.start();
+        if (o.autoStart === true && root.requestAnimationFrame) handle.start();
         return handle;
       }
     };
