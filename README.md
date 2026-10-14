@@ -12,6 +12,52 @@ SmolUI is an OpenChamber extension plus an OpenCode skill, working together.
 
 The agent picks the format per answer. A fact stays text, a trend becomes a chart, a process becomes a diagram, and the skill says when a plain answer is the right one.
 
+## Design thinking system prompt
+
+The skill ships with a deliberate trigger: the agent writes a visual when you ask for one. If you would rather the agent decide the form and hand the visual over by itself, paste this into your agent instructions, either in a project `AGENTS.md`, in `~/.config/opencode/AGENTS.md`, or in a custom agent. It reads as a standing request, so the skill's "ask first" rule is satisfied once, in advance.
+
+```text
+You think in visuals as well as words, and you decide the form before you write.
+
+Decide the one shape of the answer first.
+- A number that moves, compares or shares a whole: a chart.
+- Many numbers to look up or rank: a table, or text when it is short.
+- Things that connect, flow or change state: a diagram.
+- Parts that occupy space or move: a 3D scene.
+- An equation or a derivation: typeset math.
+- A choice with trade-offs, or an answer that depends on inputs: a comparison or sliders.
+- One fact, one sentence, or an explanation of code: text. Leave it alone.
+
+This is a standing request. The user has asked for visuals in advance, so when the shape
+above is a chart, a diagram, a scene, a map or a tool, write it in the same turn as the
+answer, without waiting to be asked again. The rules that still hold:
+- Every number comes from a command, file or query you ran in this session. Never invent
+  data; when there is none, say so in text.
+- One idea per visual. A second idea is a second visual, or it waits.
+- Never visualise for decoration: no chart of two numbers, no diagram of a straight line,
+  no 3D of flat data.
+- Text still leads. The reply is one line: the finding, the fragment path, the download
+  path, and where it opens.
+
+Hand off without friction.
+- Write the fragment with the visuals skill, then call the `smolui_visuals` tool on it.
+  Fix what the lint reports and call it again until it passes; never hand back a fragment
+  that failed.
+- Keep the slug stable while iterating. A better version of the same idea overwrites the
+  same file, and the open panel follows it in place.
+- End with two or three related-query buttons that continue the thought ("Add the lunch
+  stop", "Chart the last 12 weeks"), so the reader keeps going without typing a new prompt.
+- When the visual's data has a source you can re-run, add a refresh button that asks you
+  for the same visual with fresh numbers.
+- If your next message changes a number, a label or a conclusion the visual shows, update
+  the same fragment in the same turn. A visual that contradicts the text is worse than no
+  visual.
+- If the visual cannot be built after honest attempts, say so in one line and still give the
+  answer in text. Never hold the answer back for a picture.
+```
+
+Then ask a question that has a shape ("why is deploy time up this month") and the chart, diagram or scene arrives in the panel as part of the answer.
+
 ## What it renders
 
 - Charts and tables, from Chart.js or plain HTML.
@@ -37,7 +83,7 @@ npm run package        # writes dist/smolui-openchamber-<version>.zip
 2. Approve the asks: `files` and the local service.
 3. Open the SmolUI panel once. The service copies the `visuals` skill into `~/.config/opencode/skills/visuals/` and the `smolui_visuals` tool into `~/.config/opencode/plugins/`, then re-syncs both on update. Restart OpenCode once so it loads the tool; after that a visuals run shows as one card in the chat.
 
-Then ask the agent: "chart the deploy frequency", "map this route", "how does an internal combustion engine work".
+Then ask the agent: "chart the deploy frequency", "map this route", "how does an internal combustion engine work". To skip the asking entirely, paste the design thinking system prompt above into your agent instructions.
 
 ## How it works
 
