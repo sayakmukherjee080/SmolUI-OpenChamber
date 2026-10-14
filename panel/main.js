@@ -2499,19 +2499,11 @@ ${frag}
   var FRAGMENT_SUFFIX = ".visual.html";
   var OPEN_REQUEST_KEY2 = "open-request";
   var OPEN_REQUEST_TTL_MS = 6e4;
-  var PROMPT_HISTORY_KEY = "prompt-history";
-  var PROMPT_HISTORY_MAX = 6;
   var SKILL_NOTICE_KEY = "skill-notice";
   var SKILL_NOTICE_TTL_MS = 24 * 60 * 60 * 1e3;
   var POLL_MS = 2500;
   var POLL_MS_BUSY = 1e3;
   var AUTO_OPEN_FRESH_MS = 2 * 60 * 1e3;
-  var SUGGESTIONS = [
-    "Chart this week's numbers",
-    "Map this route",
-    "Explain this with a diagram",
-    "Compare the options"
-  ];
   function el2(tag, className) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -2547,32 +2539,24 @@ ${frag}
     const bar = el2("header", "bar");
     const title = el2("span", "bar-title");
     title.textContent = "SmolUI";
+    const barStatus = el2("span", "bar-status");
     const barActions = el2("div", "bar-actions");
     const backSlot = el2("div", "slot");
     barActions.append(backSlot);
-    bar.append(title, barActions);
+    bar.append(title, barStatus, barActions);
     const noticeHost = el2("div", "notice");
-    const promptRow = el2("form", "prompt-row");
-    const promptInput = el2("input", "prompt-input");
-    promptInput.type = "text";
-    promptInput.placeholder = "Ask for a chart, a map, a plan\u2026";
-    promptInput.setAttribute("aria-label", "Ask the agent");
-    const promptSlot = el2("div", "slot");
-    promptRow.append(promptInput, promptSlot);
-    const promptStatus = el2("div", "prompt-status");
     const listHost = el2("div", "list-host");
     const listBox = el2("div");
     const listLoadingHost = el2("div", "loading-host");
     const listStateHost = el2("div");
-    const chipHost = el2("div", "chip-row");
-    listHost.append(listBox, listLoadingHost, listStateHost, chipHost);
+    listHost.append(listBox, listLoadingHost, listStateHost);
     const viewHost = el2("div", "view-host");
     viewHost.hidden = true;
     const loadingHost = el2("div", "loading-host");
     viewHost.append(loadingHost);
     const metaHost = el2("div", "meta-host");
     metaHost.hidden = true;
-    app.append(bar, promptRow, promptStatus, noticeHost, listHost, viewHost, metaHost);
+    app.append(bar, noticeHost, listHost, viewHost, metaHost);
     root2.append(app);
     const renderer = createRenderer({ container: viewHost, host, assets });
     let entries = [];
@@ -2589,25 +2573,18 @@ ${frag}
     let ticking = false;
     let listGeneration = 0;
     let busy = false;
-    let history = [];
     let knownPaths = /* @__PURE__ */ new Set();
     let newestSeen = null;
     let stateBlock = null;
     let noticeBlock = null;
     let metaButton = null;
     let loadingBlock = null;
-    let chipButtons = [];
     const list = mountList(listBox, {
       items: [],
       ariaLabel: "Visuals",
       onSelect: (id) => void openVisual(id)
     });
     mountButton(backSlot, { label: "Back", variant: "ghost", size: "sm", onClick: () => showList() });
-    mountButton(promptSlot, { label: "Send", variant: "default", size: "sm", onClick: () => void sendPrompt() });
-    promptRow.addEventListener("submit", (event) => {
-      event.preventDefault();
-      void sendPrompt();
-    });
     function toast(kind, message) {
       void host.toast({ kind, message }).catch(() => {
       });
@@ -2615,9 +2592,6 @@ ${frag}
     function clearStateBlock() {
       stateBlock?.dispose();
       stateBlock = null;
-      for (const button2 of chipButtons) button2.dispose();
-      chipButtons = [];
-      chipHost.replaceChildren();
     }
     function clearNotice() {
       noticeBlock?.dispose();
@@ -2674,9 +2648,8 @@ ${frag}
       } else if (listState === "no-visuals") {
         stateBlock = mountEmpty(listStateHost, {
           title: "No visuals yet",
-          body: "Ask below \u2014 the agent writes a chart, map or plan into .visuals/."
+          body: "Ask the agent in chat: the chart, map or plan lands here."
         });
-        paintChips();
       } else if (listState === "not-granted") {
         stateBlock = mountBanner(listStateHost, {
           tone: "error",
@@ -2752,64 +2725,8 @@ ${frag}
     function considerAutoOpen(change, firstLoad) {
       if (state !== "list" || !change.newest) return;
       const fresh = Date.now() - change.newest.mtime < AUTO_OPEN_FRESH_MS;
-      const shouldOpen = firstLoad ? busy && fresh : change.isNew || busy && change.changed;
+      const shouldOpen = firstLoad ? fresh : change.isNew || busy && change.changed;
       if (shouldOpen) void openVisual(change.newest.path);
-    }
-    function paintChips() {
-      for (const button2 of chipButtons) button2.dispose();
-      chipButtons = [];
-      chipHost.replaceChildren();
-      if (listState !== "no-visuals") return;
-      for (const item of history.length > 0 ? history : SUGGESTIONS) {
-        const slot = el2("div", "slot");
-        chipHost.append(slot);
-        chipButtons.push(
-          mountButton(slot, {
-            label: item,
-            variant: "outline",
-            size: "xs",
-            onClick: () => {
-              promptInput.value = item;
-              promptInput.focus();
-            }
-          })
-        );
-      }
-    }
-    async function loadHistory() {
-      try {
-        const raw = await host.storage.get(PROMPT_HISTORY_KEY);
-        const items = raw && typeof raw === "object" && !Array.isArray(raw) ? raw.items : null;
-        if (Array.isArray(items)) {
-          history = items.filter((item) => typeof item === "string").slice(0, PROMPT_HISTORY_MAX);
-        }
-      } catch {
-      }
-    }
-    async function rememberPrompt(text) {
-      history = [text, ...history.filter((item) => item !== text)].slice(0, PROMPT_HISTORY_MAX);
-      try {
-        await host.storage.set(PROMPT_HISTORY_KEY, { items: history });
-      } catch {
-      }
-      if (listState === "no-visuals") paintChips();
-    }
-    async function sendPrompt() {
-      const text = promptInput.value.trim();
-      if (!text) return;
-      const payload = openPath ? `Regarding \`${openPath}\`: ${text}` : text;
-      try {
-        const result = await host.prompt({ text: payload, send: true });
-        if (result.sent !== "sent") {
-          toast("info", result.sent === "no-model" ? "No model is selected in the chat." : "The message was not sent.");
-          return;
-        }
-        promptInput.value = "";
-        await rememberPrompt(text);
-      } catch (error) {
-        const message = error instanceof HostRequestError && error.code === "SESSION_BUSY" ? "The session is busy; try again when it finishes." : error instanceof HostRequestError && error.code === "NO_SESSION" ? "Open a chat first, then ask." : error instanceof HostRequestError && error.code === "NOT_GRANTED" ? "Approve the prompt capability in Settings \u2192 Extensions." : error instanceof HostRequestError ? `Could not send: ${error.message}` : "Could not send the prompt.";
-        toast("error", message);
-      }
     }
     async function consumeOpenRequest() {
       try {
@@ -2948,11 +2865,16 @@ ${frag}
       if (ticking || document.visibilityState !== "visible") return;
       ticking = true;
       try {
+        const change = await refreshList(true);
         if (state === "visual" && openPath) {
+          const newest = change?.newest ?? null;
+          if (newest && newest.path !== openPath && (busy || change?.isNew) && newest.mtime >= openMtime) {
+            await openVisual(newest.path);
+            return;
+          }
           await reopenIfChanged();
           return;
         }
-        const change = await refreshList(true);
         if (change) considerAutoOpen(change, false);
         await consumeOpenRequest();
       } finally {
@@ -2972,7 +2894,7 @@ ${frag}
       const next = Boolean(session?.busy);
       if (next === busy) return;
       busy = next;
-      promptStatus.textContent = busy ? "The agent is writing\u2026" : "";
+      barStatus.textContent = busy ? "The agent is writing\u2026" : "";
     });
     host.onSessionLifecycle(({ phase }) => {
       if (phase !== "completed") return;
@@ -3010,7 +2932,6 @@ ${frag}
     });
     paintState();
     void (async () => {
-      await loadHistory();
       const change = await refreshList(false);
       if (change) considerAutoOpen(change, true);
       await consumeOpenRequest();

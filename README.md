@@ -34,10 +34,10 @@ npm run package        # writes dist/smolui-openchamber-<version>.zip
 ```
 
 1. Settings -> Extensions -> add the zip, the folder, or the repository URL.
-2. Approve the asks: `files`, `prompt`, the local service.
+2. Approve the asks: `files` and the local service.
 3. Open the SmolUI panel once. The service copies the `visuals` skill into `~/.config/opencode/skills/visuals/` and the `smolui_visuals` tool into `~/.config/opencode/plugins/`, then re-syncs both on update. Restart OpenCode once so it loads the tool; after that a visuals run shows as one card in the chat.
 
-Then ask in the panel: "chart the deploy frequency", "map this route", "how does an internal combustion engine work".
+Then ask the agent: "chart the deploy frequency", "map this route", "how does an internal combustion engine work".
 
 ## How it works
 
@@ -45,7 +45,7 @@ Then ask in the panel: "chart the deploy frequency", "map this route", "how does
 2. `smolui_visuals` lints it and builds `.visuals/<slug>.html`, the standalone download, with the skill's own Node scripts. The lint refuses raw colours, font families and external URLs, and it stops the build on errors.
 3. The extension rebuilds the same page in the browser. The bytes match the Node build exactly, checked for twelve example fragments in both themes.
 4. The page runs in a nested `sandbox="allow-scripts"` frame: no same-origin, no network, every request blocked by CSP. Only the frame height and an optional ask cross back.
-5. The panel watches the project while it is open, opens a new visual by itself, and updates an open one in place when the file changes.
+5. The panel watches the project while it is open: it opens a new visual by itself, follows the agent onto a new one as it appears, and lands an edit to the visual you are reading in place.
 6. The download carries the stylesheet, the fonts it needs and only the declared libraries, so it opens anywhere, offline.
 
 One stylesheet and one theme adapter set the tokens, the fonts (Geist, Geist Mono, nine Noto Indic scripts, all bundled) and the light and dark modes.
@@ -65,7 +65,6 @@ One stylesheet and one theme adapter set the tokens, the fonts (Geist, Geist Mon
 | Asked for | Used for |
 | --- | --- |
 | `files` | reading the project's `.visuals` folder; stat of the download |
-| `prompt` | sending what you type in the panel's prompt box into the open session |
 | local service | installing and re-syncing the `visuals` skill and the `smolui_visuals` tool; serving package assets |
 
 No origins, no integrations, no accounts, no API keys, no telemetry, no hosted service.

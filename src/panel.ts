@@ -27,22 +27,12 @@ type ListState = "loading" | "ready" | "no-project" | "no-visuals" | "not-grante
 const FRAGMENT_SUFFIX = ".visual.html";
 const OPEN_REQUEST_KEY = "open-request";
 const OPEN_REQUEST_TTL_MS = 60_000;
-const PROMPT_HISTORY_KEY = "prompt-history";
-const PROMPT_HISTORY_MAX = 6;
 const SKILL_NOTICE_KEY = "skill-notice";
 const SKILL_NOTICE_TTL_MS = 24 * 60 * 60 * 1000;
 const POLL_MS = 2500;
 const POLL_MS_BUSY = 1000;
 /** A visual this fresh opens by itself when the panel first loads mid-turn. */
 const AUTO_OPEN_FRESH_MS = 2 * 60 * 1000;
-
-/** Chips shown under the empty state before the user has asked anything. */
-const SUGGESTIONS = [
-  "Chart this week's numbers",
-  "Map this route",
-  "Explain this with a diagram",
-  "Compare the options",
-];
 
 /** Creates an element with an optional class. */
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
@@ -86,26 +76,18 @@ export function mountPanelSurface(deps: { host: HostClient; assets: Assets; root
   const bar = el("header", "bar");
   const title = el("span", "bar-title");
   title.textContent = "SmolUI";
+  const barStatus = el("span", "bar-status");
   const barActions = el("div", "bar-actions");
   const backSlot = el("div", "slot");
   barActions.append(backSlot);
-  bar.append(title, barActions);
+  bar.append(title, barStatus, barActions);
 
   const noticeHost = el("div", "notice");
-  const promptRow = el("form", "prompt-row");
-  const promptInput = el("input", "prompt-input");
-  promptInput.type = "text";
-  promptInput.placeholder = "Ask for a chart, a map, a plan…";
-  promptInput.setAttribute("aria-label", "Ask the agent");
-  const promptSlot = el("div", "slot");
-  promptRow.append(promptInput, promptSlot);
-  const promptStatus = el("div", "prompt-status");
   const listHost = el("div", "list-host");
   const listBox = el("div");
   const listLoadingHost = el("div", "loading-host");
   const listStateHost = el("div");
-  const chipHost = el("div", "chip-row");
-  listHost.append(listBox, listLoadingHost, listStateHost, chipHost);
+  listHost.append(listBox, listLoadingHost, listStateHost);
   const viewHost = el("div", "view-host");
   viewHost.hidden = true;
   const loadingHost = el("div", "loading-host");
@@ -113,7 +95,7 @@ export function mountPanelSurface(deps: { host: HostClient; assets: Assets; root
   const metaHost = el("div", "meta-host");
   metaHost.hidden = true;
 
-  app.append(bar, promptRow, promptStatus, noticeHost, listHost, viewHost, metaHost);
+  app.append(bar, noticeHost, listHost, viewHost, metaHost);
   root.append(app);
 
   const renderer = createRenderer({ container: viewHost, host, assets });
@@ -132,14 +114,12 @@ export function mountPanelSurface(deps: { host: HostClient; assets: Assets; root
   let ticking = false;
   let listGeneration = 0;
   let busy = false;
-  let history: string[] = [];
   let knownPaths = new Set<string>();
   let newestSeen: { path: string; mtime: number } | null = null;
   let stateBlock: Disposable | null = null;
   let noticeBlock: Disposable | null = null;
   let metaButton: Disposable | null = null;
   let loadingBlock: Disposable | null = null;
-  let chipButtons: Disposable[] = [];
 
   const list = mountList(listBox, {
     items: [],
@@ -147,11 +127,6 @@ export function mountPanelSurface(deps: { host: HostClient; assets: Assets; root
     onSelect: (id) => void openVisual(id),
   });
   mountButton(backSlot, { label: "Back", variant: "ghost", size: "sm", onClick: () => showList() });
-  mountButton(promptSlot, { label: "Send", variant: "default", size: "sm", onClick: () => void sendPrompt() });
-  promptRow.addEventListener("submit", (event) => {
-    event.preventDefault();
-    void sendPrompt();
-  });
 
   /** Shows a toast without ever leaking a rejection. */
   function toast(kind: "info" | "success" | "error", message: string): void {
@@ -162,9 +137,6 @@ export function mountPanelSurface(deps: { host: HostClient; assets: Assets; root
   function clearStateBlock(): void {
     stateBlock?.dispose();
     stateBlock = null;
-    for (const button of chipButtons) button.dispose();
-    chipButtons = [];
-    chipHost.replaceChildren();
   }
 
   /** Drops the current banner. */
@@ -235,9 +207,8 @@ export function mountPanelSurface(deps: { host: HostClient; assets: Assets; root
     } else if (listState === "no-visuals") {
       stateBlock = mountEmpty(listStateHost, {
         title: "No visuals yet",
-        body: "Ask below — the agent writes a chart, map or plan into .visuals/.",
+        body: "Ask the agent in chat: the chart, map or plan lands here.",
       });
-      paintChips();
     } else if (listState === "not-granted") {
       stateBlock = mountBanner(listStateHost, {
         tone: "error",
@@ -317,83 +288,8 @@ export function mountPanelSurface(deps: { host: HostClient; assets: Assets; root
   function considerAutoOpen(change: ListChange, firstLoad: boolean): void {
     if (state !== "list" || !change.newest) return;
     const fresh = Date.now() - change.newest.mtime < AUTO_OPEN_FRESH_MS;
-    const shouldOpen = firstLoad ? busy && fresh : change.isNew || (busy && change.changed);
+    const shouldOpen = firstLoad ? fresh : change.isNew || (busy && change.changed);
     if (shouldOpen) void openVisual(change.newest.path);
-  }
-
-  /** Draws recent-ask or suggestion chips under the empty state. */
-  function paintChips(): void {
-    for (const button of chipButtons) button.dispose();
-    chipButtons = [];
-    chipHost.replaceChildren();
-    if (listState !== "no-visuals") return;
-    for (const item of history.length > 0 ? history : SUGGESTIONS) {
-      const slot = el("div", "slot");
-      chipHost.append(slot);
-      chipButtons.push(
-        mountButton(slot, {
-          label: item,
-          variant: "outline",
-          size: "xs",
-          onClick: () => {
-            promptInput.value = item;
-            promptInput.focus();
-          },
-        }),
-      );
-    }
-  }
-
-  /** Reads the recent prompts kept for the chips. */
-  async function loadHistory(): Promise<void> {
-    try {
-      const raw = await host.storage.get(PROMPT_HISTORY_KEY);
-      const items = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as { items?: unknown }).items : null;
-      if (Array.isArray(items)) {
-        history = items.filter((item): item is string => typeof item === "string").slice(0, PROMPT_HISTORY_MAX);
-      }
-    } catch {
-      // History is optional.
-    }
-  }
-
-  /** Keeps the last few prompts so they can be re-run from the empty state. */
-  async function rememberPrompt(text: string): Promise<void> {
-    history = [text, ...history.filter((item) => item !== text)].slice(0, PROMPT_HISTORY_MAX);
-    try {
-      await host.storage.set(PROMPT_HISTORY_KEY, { items: history });
-    } catch {
-      // History is optional.
-    }
-    if (listState === "no-visuals") paintChips();
-  }
-
-  /** Sends the prompt box text into the open session; the answer streams back. */
-  async function sendPrompt(): Promise<void> {
-    const text = promptInput.value.trim();
-    if (!text) return;
-    const payload = openPath ? `Regarding \`${openPath}\`: ${text}` : text;
-    try {
-      const result = await host.prompt({ text: payload, send: true });
-      if (result.sent !== "sent") {
-        toast("info", result.sent === "no-model" ? "No model is selected in the chat." : "The message was not sent.");
-        return;
-      }
-      promptInput.value = "";
-      await rememberPrompt(text);
-    } catch (error) {
-      const message =
-        error instanceof HostRequestError && error.code === "SESSION_BUSY"
-          ? "The session is busy; try again when it finishes."
-          : error instanceof HostRequestError && error.code === "NO_SESSION"
-            ? "Open a chat first, then ask."
-            : error instanceof HostRequestError && error.code === "NOT_GRANTED"
-              ? "Approve the prompt capability in Settings → Extensions."
-              : error instanceof HostRequestError
-                ? `Could not send: ${error.message}`
-                : "Could not send the prompt.";
-      toast("error", message);
-    }
   }
 
   /** Opens the visual the file editor asked for, when one is waiting. */
@@ -545,16 +441,24 @@ export function mountPanelSurface(deps: { host: HostClient; assets: Assets; root
     await openVisual(openPath);
   }
 
-  /** One live check: the open visual, or the list plus any pending open request. */
+  /** One live check: follow the newest visual, or re-read the open one in place. */
   async function tick(): Promise<void> {
     if (ticking || document.visibilityState !== "visible") return;
     ticking = true;
     try {
+      const change = await refreshList(true);
       if (state === "visual" && openPath) {
+        const newest = change?.newest ?? null;
+        // The agent writes its next visual under a new slug: follow that file while it
+        // works, or as soon as it appears. A reader parked on an older file keeps it
+        // until then, and an edit to the open file still lands in place.
+        if (newest && newest.path !== openPath && (busy || change?.isNew) && newest.mtime >= openMtime) {
+          await openVisual(newest.path);
+          return;
+        }
         await reopenIfChanged();
         return;
       }
-      const change = await refreshList(true);
       if (change) considerAutoOpen(change, false);
       await consumeOpenRequest();
     } finally {
@@ -577,7 +481,7 @@ export function mountPanelSurface(deps: { host: HostClient; assets: Assets; root
     const next = Boolean(session?.busy);
     if (next === busy) return;
     busy = next;
-    promptStatus.textContent = busy ? "The agent is writing…" : "";
+    barStatus.textContent = busy ? "The agent is writing…" : "";
   });
 
   host.onSessionLifecycle(({ phase }) => {
@@ -621,7 +525,6 @@ export function mountPanelSurface(deps: { host: HostClient; assets: Assets; root
 
   paintState();
   void (async () => {
-    await loadHistory();
     const change = await refreshList(false);
     if (change) considerAutoOpen(change, true);
     await consumeOpenRequest();

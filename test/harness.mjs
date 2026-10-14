@@ -123,19 +123,14 @@ try {
   assert.deepEqual(titles, ["kpi", "whatif", "line"], "list is newest first and hides the standalone .html");
   checks += 1;
 
-  // prompt box sends the typed text into the session
-  await guest.locator(".prompt-input").fill("Chart the deploy frequency");
-  await guest.locator(".prompt-row button", { hasText: "Send" }).click();
-  await page.waitForFunction(() => window.__harness.logs.prompts.length > 0, null, { timeout: 5000 });
-  const prompts = await page.evaluate(() => window.__harness.logs.prompts);
-  assert.equal(prompts[0].text, "Chart the deploy frequency", "prompt box sends the typed text");
-  assert.equal(prompts[0].send, true, "prompt box sends immediately");
-  assert.equal(await guest.locator(".prompt-input").inputValue(), "", "prompt box clears after sending");
-  checks += 1;
-
   // the busy indicator follows the session
   await page.evaluate(() => window.__harness.pushSession(true));
-  await guest.locator(".prompt-status", { hasText: "The agent is writing" }).waitFor({ timeout: 5000 });
+  await guest.locator(".bar-status", { hasText: "The agent is writing" }).waitFor({ timeout: 5000 });
+  checks += 1;
+
+  // the panel carries no chat box; the agent is asked in the chat
+  assert.equal(await guest.locator(".prompt-input").count(), 0, "no chat box in the panel");
+  assert.equal(await guest.locator(".prompt-row").count(), 0, "no chat row in the panel");
   checks += 1;
 
   await guest.locator('[role="option"]', { hasText: "kpi" }).click();
@@ -176,14 +171,6 @@ try {
   await page.waitForFunction(() => window.__harness.logs.clipboard.length > 0, null, { timeout: 5000 });
   const copied = await page.evaluate(() => window.__harness.logs.clipboard[0]);
   assert.ok(copied.includes(".visuals/whatif.html"), "copy path writes the download path");
-  checks += 1;
-
-  // with a visual open, the prompt carries its path
-  await guest.locator(".prompt-input").fill("Move the sunset stop earlier");
-  await guest.locator(".prompt-row button", { hasText: "Send" }).click();
-  await page.waitForFunction(() => window.__harness.logs.prompts.length > 1, null, { timeout: 5000 });
-  const contextPrompt = await page.evaluate(() => window.__harness.logs.prompts[1].text);
-  assert.ok(contextPrompt.startsWith("Regarding `.visuals/whatif.visual.html`:"), "prompt carries the open visual path");
   checks += 1;
 
   // --- message action: ready carries a message item naming a visual ---
@@ -234,15 +221,7 @@ try {
   await emptyGuest.locator(".oc-sdk-empty-title").waitFor({ timeout: 15000 });
   assert.equal(await emptyGuest.locator(".oc-sdk-empty-title").innerText(), "No visuals yet");
   checks += 1;
-  assert.deepEqual(
-    await emptyGuest.locator(".chip-row button").allTextContents(),
-    ["Chart this week's numbers", "Map this route", "Explain this with a diagram", "Compare the options"],
-    "suggestions show on an empty project",
-  );
-  await emptyGuest.locator(".prompt-input").fill("Map the museum route");
-  await emptyGuest.locator(".prompt-row button", { hasText: "Send" }).click();
-  await emptyPage.waitForFunction(() => window.__harness.logs.prompts.length > 0, null, { timeout: 5000 });
-  await emptyGuest.locator(".chip-row", { hasText: "Map the museum route" }).waitFor({ timeout: 5000 });
+  assert.equal(await emptyGuest.locator(".prompt-input").count(), 0, "the empty state has no chat box either");
   checks += 1;
 
   // --- a visual written while the panel is open opens by itself ---
@@ -254,6 +233,39 @@ try {
   const autoVisual = autoGuest.frameLocator("iframe.visual-frame");
   await autoVisual.locator("h1").waitFor({ timeout: 15000 });
   assert.ok(/Rerank/.test(await autoVisual.locator("h1").innerText()), "a visual written while the panel is open opens by itself");
+  checks += 1;
+
+  // --- a newer visual takes over from the open one while the agent works ---
+  const followPage = await newHarnessPage("");
+  const followGuest = followPage.frameLocator("#guest");
+  await followGuest.locator('[role="option"]').first().waitFor({ timeout: 15000 });
+  await followGuest.locator('[role="option"]', { hasText: "line" }).click();
+  const followVisual = followGuest.frameLocator("iframe.visual-frame");
+  await followVisual.locator("canvas").waitFor({ timeout: 30000 });
+  await followPage.evaluate(() => window.__harness.pushSession(true));
+  await followPage.evaluate(() => window.__harness.addVisual("kpi", "tornado"));
+  await followVisual.locator("h1", { hasText: "Rerank" }).waitFor({ timeout: 15000 });
+  checks += 1;
+
+  // --- an idle panel still follows a brand-new visual, since the turn may just have ended ---
+  const freshPage = await newHarnessPage("");
+  const freshGuest = freshPage.frameLocator("#guest");
+  await freshGuest.locator('[role="option"]').first().waitFor({ timeout: 15000 });
+  await freshGuest.locator('[role="option"]', { hasText: "line" }).click();
+  const freshVisual = freshGuest.frameLocator("iframe.visual-frame");
+  await freshVisual.locator("canvas").waitFor({ timeout: 30000 });
+  await freshPage.evaluate(() => window.__harness.addVisual("kpi", "fresh"));
+  await freshVisual.locator("h1", { hasText: "Rerank" }).waitFor({ timeout: 15000 });
+  checks += 1;
+
+  // --- but an edit to another existing file does not pull an idle reader away ---
+  await freshGuest.locator("button", { hasText: "Back" }).click();
+  await freshGuest.locator('[role="option"]', { hasText: "line" }).click();
+  await freshVisual.locator("canvas").waitFor({ timeout: 30000 });
+  const lineTitle = await freshVisual.locator("h1").innerText();
+  await freshPage.evaluate(() => window.__harness.addVisual("whatif", "whatif"));
+  await freshPage.waitForTimeout(4000);
+  assert.equal(await freshVisual.locator("h1").innerText(), lineTitle, "an edit to another existing file leaves the reader alone");
   checks += 1;
 
   // --- refused asset fetches (an expired token) fall back to the service ---
