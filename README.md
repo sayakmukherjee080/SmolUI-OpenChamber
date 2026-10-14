@@ -2,15 +2,9 @@
 
 I liked ChatGPT's Intelligent UI and wanted to see if it would work in OpenChamber. This is that experiment, and it works: the agent writes a visual, the panel renders it while the agent is still writing, and every visual leaves as one HTML file that opens offline.
 
-## What it is
+Three parts do that. The **skill** teaches the agent to write `.visuals/<slug>.visual.html`, a themed fragment with its data in one JSON block and a lint that runs before it ships. The **extension** renders those fragments, in the rail panel, from a message action, in the file editor, and full screen. And `smolui_visuals` is the one call the agent makes once the fragment is written: it lints and builds the download together, so the chat shows one card instead of two shell commands.
 
-SmolUI is an OpenChamber extension plus an OpenCode skill, working together.
-
-- The **skill** teaches the agent to write `.visuals/<slug>.visual.html`: a themed HTML fragment with all its data in one JSON block, checked by a lint before it ships.
-- The **extension** renders those fragments in a rail panel, from a message action, in the file editor, and full screen, updating live while the agent writes.
-- The **tool** (`smolui_visuals`) is one call the agent makes after writing a fragment. It lints the fragment and builds the download in one step, so the chat shows a single card instead of two shell commands.
-
-The agent picks the format per answer. A fact stays text, a trend becomes a chart, a process becomes a diagram, and the skill says when a plain answer is the right one.
+The agent decides the form per answer. A fact stays text, a trend becomes a chart, a process becomes a diagram.
 
 ## Design thinking system prompt
 
@@ -39,7 +33,7 @@ answer, without waiting to be asked again. The rules that still hold:
 - Text still leads. The reply is one line: the finding, the fragment path, the download
   path, and where it opens.
 
-Hand off without friction.
+Then hand it over.
 - Write the fragment with the visuals skill, then call the `smolui_visuals` tool on it.
   Fix what the lint reports and call it again until it passes; never hand back a fragment
   that failed.
@@ -49,11 +43,10 @@ Hand off without friction.
   stop", "Chart the last 12 weeks"), so the reader keeps going without typing a new prompt.
 - When the visual's data has a source you can re-run, add a refresh button that asks you
   for the same visual with fresh numbers.
-- If your next message changes a number, a label or a conclusion the visual shows, update
-  the same fragment in the same turn. A visual that contradicts the text is worse than no
-  visual.
-- If the visual cannot be built after honest attempts, say so in one line and still give the
-  answer in text. Never hold the answer back for a picture.
+- If a later message changes a number, a label or a conclusion the visual shows, update the
+  same fragment in the same turn. A visual that contradicts the text is worse than no visual.
+- If the visual still will not build after honest attempts, say so in one line and answer
+  in text. Never hold the answer back for a picture.
 ```
 
 Then ask a question that has a shape ("why is deploy time up this month") and the chart, diagram or scene arrives in the panel as part of the answer.
@@ -63,7 +56,7 @@ Then ask a question that has a shape ("why is deploy time up this month") and th
 - Charts and tables, from Chart.js or plain HTML.
 - Maps: a route with numbered stops and times, drawn offline from data in the file.
 - Diagrams, flowcharts, sequence and state machines, from Mermaid.
-- 3D in the Studio clay style: matte clay parts, soft shadows, one accent on the thing the title is about, free orbit, labels on by default with a toggle, and detail helpers for holes, bolts and contact shadows.
+- 3D in the Studio clay style, for parts and structures that occupy space.
 - Equations and derivations, typeset with KaTeX.
 - Small tools: what-if calculators, filters, planners, checklists.
 - Processes in motion: a path that draws itself, a guided tour with steps, an engine that runs.
@@ -89,9 +82,9 @@ Then ask the agent: "chart the deploy frequency", "map this route", "how does an
 
 1. The agent writes `.visuals/<slug>.visual.html` with the skill: a first line like `<!-- visuals: 1.2 libs: chart katex -->`, the data in one JSON block, and no colours or fonts of its own.
 2. `smolui_visuals` lints it and builds `.visuals/<slug>.html`, the standalone download, with the skill's own Node scripts. The lint refuses raw colours, font families and external URLs, and it stops the build on errors.
-3. The extension rebuilds the same page in the browser. The bytes match the Node build exactly, checked for twelve example fragments in both themes.
+3. The extension rebuilds the same page in the browser, byte for byte, checked against the Node build for twelve example fragments in both themes.
 4. The page runs in a nested `sandbox="allow-scripts"` frame: no same-origin, no network, every request blocked by CSP. Only the frame height and an optional ask cross back.
-5. The panel watches the project while it is open: it opens a new visual by itself, follows the agent onto a new one as it appears, and lands an edit to the visual you are reading in place.
+5. The panel watches the project while it is open. It opens a new visual by itself, follows the agent onto a new one as it appears, and lands an edit to the visual you are reading in place.
 6. The download carries the stylesheet, the fonts it needs and only the declared libraries, so it opens anywhere, offline.
 
 One stylesheet and one theme adapter set the tokens, the fonts (Geist, Geist Mono, nine Noto Indic scripts, all bundled) and the light and dark modes.
@@ -102,18 +95,14 @@ One stylesheet and one theme adapter set the tokens, the fonts (Geist, Geist Mon
 - OpenCode 2.x for the skill and the tool.
 - Panel bundle about 125 KB. A library is fetched only when a fragment declares it: Chart.js 0.2 MB, D3 0.3 MB, KaTeX 0.3 MB, Three.js 0.8 MB, Mermaid 5.4 MB.
 - Fragment: up to 200 KB, first line `<!-- visuals: 1.2 libs: chart katex -->`, all data in one JSON block.
-- The page SmolUI builds is byte-identical to the skill's Node build. The test suite checks twelve example fragments in both themes.
-- Refresh: 1 s polling while the agent works, 2.5 s idle. A new visual auto-opens; an edited one updates in place.
+- Refresh: 1 s polling while the agent works, 2.5 s idle.
 - Assets: package fetch first, the extension's service reading in chunks as fallback.
 
 ## Permissions
 
-| Asked for | Used for |
-| --- | --- |
-| `files` | reading the project's `.visuals` folder; stat of the download |
-| local service | installing and re-syncing the `visuals` skill and the `smolui_visuals` tool; serving package assets |
+It asks for `files`, to read the project's `.visuals` folder and stat the download, and for the local service, to install and re-sync the `visuals` skill and the `smolui_visuals` tool and to serve the package's assets. That is the whole list.
 
-No origins, no integrations, no accounts, no API keys, no telemetry, no hosted service.
+No origins, no integrations, no accounts, no keys, no telemetry, no hosted service.
 
 ## Develop
 
@@ -128,7 +117,7 @@ npm run typecheck
 npm run package        # build + dist/smolui-openchamber-<version>.zip
 ```
 
-The skill ships built in `skill/visuals/` (stylesheet, theme adapter, scripts, references, examples) and that is what the package uses. The kit that generates the stylesheet and the adapter is maintained outside this repository; when it is absent the build uses the committed skill as is.
+The skill ships built in `skill/visuals/` (stylesheet, theme adapter, scripts, references, examples) and that is what the package uses. The kit that generates the stylesheet and the adapter is maintained outside this repository; without it the build uses the committed skill as is.
 
 ## Layout
 
